@@ -204,8 +204,20 @@ Miller op-amp in IHP SG13G2 (A0 57.6 dB, UGF 16.2 MHz, PM 60.4 deg, 91 uW),
 its DRC/LVS-clean layout drawn from IHP PCells, testbenches with their
 Simulation Environment setups (15 corners, Monte Carlo) and a Verilog-A
 model (`--solution` adds the exercise's two-pole model).
-`tests/make_tutorial_shots.py` rebuilds it from scratch, runs every flow and
-takes all the tutorial's screenshots from the real programs.
+
+### Retaking the tutorial's screenshots
+
+On the machine where FOSSLab is installed (e.g. the course server), as a
+normal user: in the Library Manager, *Tools > Retake tutorial screenshots...*,
+or `fosslab shots [--out ~/fosslab-shots] [--live]`. It rebuilds the op-amp
+from scratch in that folder (never in `~/fosslab`), runs every flow, takes
+every screenshot from the real programs (`<out>/screenshots/`) and lists every
+number the chapters quote next to this machine's value (about 10 minutes).
+By default it uses a private virtual display; `--live` uses yours (the
+pictures then show your X2Go desktop; do not touch the mouse meanwhile).
+
+To put the new pictures straight into the plugin of a git clone and rebuild
+its zip: `bash tests/server_shots.sh [--live]` from the clone.
 
 ## Tested
 

@@ -1,10 +1,14 @@
 """Build the tutorial's op-amp example from scratch, run every flow, and take
-the tutorial's screenshots from the real programs (on a private X display).
+the tutorial's screenshots from the real programs.
 
-    fosslab-run bash -c 'Xvfb :55 -screen 0 1600x1000x24 & DISPLAY=:55 \
-        python3 tests/make_tutorial_shots.py WORKDIR IMGDIR'
+Not run directly: use ``fosslab shots`` or, in the Library Manager,
+Tools > Retake tutorial screenshots (see examples/capture.py), which start it
+on a display of its own:
 
-Prints the numbers the tutorial quotes (results.json in WORKDIR).
+    python3 -m fosslab.examples.shots WORKDIR IMGDIR
+
+WORKDIR gets a fresh workspace and results.json (every number the tutorial
+quotes); IMGDIR the screenshots.
 """
 
 from __future__ import annotations
@@ -31,9 +35,17 @@ from fosslab.workspace import Workspace
 
 work = Path(sys.argv[1])
 img = Path(sys.argv[2])
-img.mkdir(parents=True, exist_ok=True)
+MARK = ".fosslab-shots"
+# Start from scratch, but only ever delete a folder this script made.
 if work.exists():
+    if not (work / MARK).exists() and any(work.iterdir()):
+        sys.exit(f"{work} exists and was not made by 'fosslab shots': choose another folder")
     shutil.rmtree(work)
+work.mkdir(parents=True)
+(work / MARK).write_text("made by fosslab shots: deleted at every run\n")
+img.mkdir(parents=True, exist_ok=True)
+for old_png in img.glob("*.png"):
+    old_png.unlink()
 ws = Workspace(work / "fosslab")
 ws.init()
 LIB = "opamp_tut"

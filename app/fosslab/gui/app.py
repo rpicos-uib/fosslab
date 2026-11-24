@@ -103,6 +103,7 @@ class MainWindow:
         t.add_command(label="Terminal", command=lambda: tools.open_terminal(self.ws.root))
         t.add_separator()
         t.add_command(label="Run self-test (all tools and flows)", command=self.selftest)
+        t.add_command(label="Retake tutorial screenshots...", command=self.open_shots)
 
         h = tk.Menu(mb)
         mb.add_cascade(label="Help", menu=h)
@@ -601,6 +602,11 @@ class MainWindow:
             tools.open_klayout(self.ws, gds, l2n=Path(out["lvsdb"][0]))
         elif st.get("log"):
             tools.open_editor(Path(st["log"]))
+
+    def open_shots(self) -> None:
+        from .shots_window import ShotsWindow
+
+        ShotsWindow(self.root)
 
     def selftest(self) -> None:
         tools.spawn(["xterm", "-hold", "-title", "FOSSLab self-test", "-e",

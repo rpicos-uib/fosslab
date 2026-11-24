@@ -237,6 +237,21 @@ def cmd_example(ws: Workspace, args) -> int:
     return 0
 
 
+def cmd_shots(ws: Workspace, args) -> int:
+    from .examples import capture
+
+    out = Path(args.out).expanduser() if args.out else capture.default_out()
+    rc = capture.run(out, live=args.live)
+    if rc != 0:
+        print(f"fosslab: the capture failed (code {rc}), log in {out / 'shots.log'}", file=sys.stderr)
+        return rc
+    print(f"\n{'':34s}{'this machine':>28s}   tutorial")
+    for label, here, quoted in capture.compare(out):
+        print(f"{label:34s}{here:>28s}   {quoted}{'' if here == quoted else '   <-- differs'}")
+    print(f"\nscreenshots: {out / 'screenshots'}   all numbers: {out / 'work' / 'results.json'}")
+    return 0
+
+
 def cmd_copy(ws: Workspace, args) -> int:
     src = workspace_from_env(args.from_workspace) if args.from_workspace else ws
     p = ws.copy_cell(src, args.src_lib, args.cell, args.dst_lib, args.new_name)
@@ -409,6 +424,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--solution", action="store_true", help="also the exercise solution (teachers)")
     s.set_defaults(func=cmd_example)
 
+    s = sub.add_parser("shots", help="retake the tutorial's screenshots and numbers (about 10 min)")
+    s.add_argument("--out", help="folder for it (default ~/fosslab-shots; never your workspace)")
+    s.add_argument("--live", action="store_true", help="on your own display instead of a private one")
+    s.set_defaults(func=cmd_shots)
+
     s = sub.add_parser("copy", help="copy a cell")
     s.add_argument("src_lib")
     s.add_argument("cell")
@@ -452,7 +472,7 @@ def main(argv: list[str] | None = None) -> int:
             flows.FlowError) as e:
         if os.environ.get("FOSSLAB_DEBUG"):
             raise
-        msg = e.args[0] if e.args else str(e)
+        msg = str(e) if isinstance(e, OSError) or not e.args else e.args[0]
         print(f"fosslab: {msg}", file=sys.stderr)
         _message("FOSSLab", str(msg))
         return 1
