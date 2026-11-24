@@ -24,8 +24,17 @@ if [ "${1:-}" = "--acl-only" ]; then ACL_ONLY=yes; shift; fi
 
 PWFILE=/root/fosslab_passwords.txt
 
+valid_user() {
+    # a Unix user name: lowercase letters, digits, _ and -, starting with a letter or _
+    [[ "$1" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]
+}
+
 setup_one() {
     local user=$1 name=${2:-} pass=${3:-}
+    if ! valid_user "$user"; then
+        warn "'$user' is not a valid user name: skipped (a CSV file must exist: give its path)"
+        return
+    fi
     if ! id "$user" >/dev/null 2>&1; then
         [ "$ACL_ONLY" = yes ] && { warn "$user does not exist"; return; }
         info "creating account $user"
@@ -55,9 +64,19 @@ setup_one() {
     info "$user: workspace $ws, teachers have '$FOSSLAB_ACL_MODE'"
 }
 
+# Something that looks like a file but is not there: stop, never create
+# an account named after it.
+for a in "$@"; do
+    case "$a" in
+        */*|*.csv|*.txt) [ -f "$a" ] || die "file not found: $a (run from its folder or give the full path)" ;;
+    esac
+done
+
 if [ $# -eq 1 ] && [ -f "$1" ]; then
     while IFS=, read -r user name pass; do
-        user=$(echo "$user" | tr -d '[:space:]')
+        user=$(echo "$user" | tr -d '[:space:]\r')
+        name=${name%$'\r'}            # CSV saved on Windows/Excel: CRLF line ends
+        pass=${pass%$'\r'}
         case "$user" in ''|\#*) continue ;; esac
         setup_one "$user" "$name" "$pass"
     done < "$1"
