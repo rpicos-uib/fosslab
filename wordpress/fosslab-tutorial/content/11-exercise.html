@@ -1,0 +1,48 @@
+<p>Your turn. The one-pole model of chapter 10 reproduces the gain, the bandwidth and the offset of the op-amp, but not its phase margin. Add a second pole to it, calibrate it, and repeat the Monte Carlo.</p>
+
+<h3>Task 1: a model with two poles</h3>
+<ol>
+<li>Copy the cell <code>opamp_va</code> to <code>opamp_va2</code> (right-click &gt; <em>Copy cell...</em>). Copy <code>tb_opamp_va</code> to <code>tb_opamp_va2</code> the same way.</li>
+<li>Edit <code>opamp_va2.va</code>:
+  <ul>
+  <li>rename the module to <code>opamp_va2</code>;</li>
+  <li>add a parameter <code>FP2</code>, the frequency of the second pole (Hz);</li>
+  <li>add an internal node <code>n2</code> that follows <code>n1</code> through a first-order low-pass filter with its pole at FP2 (gain 1 at DC);</li>
+  <li>make the output follow <code>n2</code> instead of <code>n1</code>.</li>
+  </ul>
+  Hint: a resistor r2 from n1 to n2 and a capacitor c2 from n2 to VSS make a pole at 1/(2π·r2·c2). Write the two currents into n2 the way the model writes the currents into n1.</li>
+<li>Compile it: <em>Run &gt; Compile Verilog-A (OpenVAF)</em>. Fix any error OpenVAF reports (the log is in the window).</li>
+<li>Make the testbench use it: in <code>opamp_va2.sym</code> change the template's model name to <code>opamp_va2_model</code>; in <code>tb_opamp_va2</code>, use the new symbol, and in the NGSPICE block load <code>../opamp_va2/opamp_va2.osdi</code> and change the model card to
+<pre class="fl-nocopy"><code>.param FP2_mean=30e6 FP2_sd=0
+.param FP2_mc=agauss(FP2_mean, FP2_sd, 1)
+.model opamp_va2_model opamp_va2 A0dB={A0dB_mc} GBW={GBW_mc} VOS={VOS_mc} SR=10.6e6 FP2={FP2_mc}</code></pre></li>
+<li>In the Simulation Environment of <code>tb_opamp_va2</code>, <em>Design variables &gt; Read from schematic</em> adds <code>FP2_mean</code> and <code>FP2_sd</code>. Press <em>Run nominal</em>.</li>
+</ol>
+<p><strong>Question 1.</strong> With GBW = 16.17 MHz and FP2 = 30 MHz, what phase margin and unity-gain frequency does the model give? Why did the unity-gain frequency change, although GBW did not?</p>
+
+<h3>Task 2: calibrate the model</h3>
+<p>For a two-pole amplifier, A(f) = A0 / ((1 + j f/f<sub>p1</sub>)(1 + j f/f<sub>p2</sub>)) with A0·f<sub>p1</sub> = GBW. Well above f<sub>p1</sub>:</p>
+<ul>
+<li>the phase margin is PM = 90° − arctan(UGF / f<sub>p2</sub>);</li>
+<li>at the unity-gain frequency |A| = 1, i.e. GBW = UGF · √(1 + (UGF/f<sub>p2</sub>)²).</li>
+</ul>
+<p><strong>Question 2.</strong> Find the values of FP2 and GBW that give the transistor-level UGF (16.17 MHz) and phase margin (60.38°). Put them in the design variables (<code>FP2_mean</code>, <code>GBW_mean</code>; scale <code>GBW_sd</code> by the same factor as <code>GBW_mean</code>) and check with <em>Run nominal</em> that the model gives 16.2 MHz and 60.4°.</p>
+
+<h3>Task 3: Monte Carlo with the two-pole model</h3>
+<p>Run the Monte Carlo of <code>tb_opamp_va2</code> (200 runs, same statistics as in chapter 10, <code>FP2_sd = 0</code>).</p>
+<p><strong>Question 3.</strong> Fill in this table and add the histograms of the phase margin and of the offset to your report:</p>
+<table>
+<tr><th>Output (200 runs)</th><th>Transistors (chapter 9)</th><th>One-pole model (chapter 10)</th><th>Two-pole model (yours)</th></tr>
+<tr><td>Unity-gain frequency</td><td>16.17 ± 0.228 MHz</td><td>16.16 ± 0.229 MHz</td><td></td></tr>
+<tr><td>Phase margin</td><td>60.38 ± 0.30°</td><td>89.49 ± 0.008°</td><td></td></tr>
+<tr><td>Output offset</td><td>1.72 ± 2.14 mV</td><td>1.58 ± 2.04 mV</td><td></td></tr>
+</table>
+<p><strong>Question 4.</strong> Your model's phase margin varies from run to run although FP2 does not. Where does its spread come from? Does it match the transistors' σ, and would it if the GBW spread were larger?</p>
+<p><strong>Question 5 (optional).</strong> In the real op-amp, what sets the second pole? Estimate it from the transistor-level design (g<sub>m6</sub>, C<sub>L</sub>, C<sub>c</sub>, the capacitance at the first stage's output) and compare with your calibrated FP2. Which simplification of the model explains the difference? (Hint: the Miller zero.)</p>
+
+<h3>What to hand in</h3>
+<ul>
+<li><code>opamp_va2.va</code>;</li>
+<li>the answers to questions 1 to 4 (and 5 if you did it), with the table and the two histograms (<em>Terminal in run folder</em> in the Results tab: the files <code>hist_pm.png</code> and <code>hist_vos.png</code>).</li>
+</ul>
+<p>Your teacher can open your workspace and run your testbench: keep everything in the library where you made it.</p>

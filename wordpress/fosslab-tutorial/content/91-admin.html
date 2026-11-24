@@ -1,0 +1,54 @@
+<p>FOSSLab runs every program inside one container image (IIC-OSIC-TOOLS, with the IHP SG13G2 PDK) through Apptainer, as the user who starts it. Students log into one server; each has a workspace in their home; teachers read every workspace from one window.</p>
+
+<h3>Install on the server (Scientific Linux 7, also EL8/9/10)</h3>
+<ol>
+<li>Copy the <code>fosslab</code> folder to the server and edit <code>install/fosslab.conf</code>: teachers' user names, groups, image version, tutorial URL.</li>
+<li>Run, as root:
+<pre><code>$ sudo ./install/install.sh</code></pre>
+It goes through six steps (each can be run again on its own, e.g. <code>install.sh 40 50</code>):
+<table>
+<tr><th>Step</th><th>Does</th></tr>
+<tr><td>10</td><td>host packages: points SL7's and EPEL 7's repositories to their archives (both are end-of-life), installs Apptainer, ACL tools, X11 forwarding, fonts, and X2Go with XFCE</td></tr>
+<tr><td>20</td><td>lets normal users run Apptainer (setuid helper, or user namespaces)</td></tr>
+<tr><td>30</td><td>the image: builds <code>iic-osic-tools_&lt;tag&gt;.sif</code> from Docker Hub (about an hour, ~45 GB free during the build, ~15 GB after), or downloads one built elsewhere with <code>install/build_sif.sh</code></td></tr>
+<tr><td>40</td><td>FOSSLab into <code>{{prefix}}</code>, <code>/etc/fosslab.conf</code>, the PATH, desktop menu entries</td></tr>
+<tr><td>50</td><td>groups <code>fosslab</code> (students) and <code>fosslab-staff</code> (teachers)</td></tr>
+<tr><td>60</td><td>the self-test as a teacher: every tool and the full IHP flow</td></tr>
+</table></li>
+<li>Add the students, from a CSV file (<code>user,Full Name[,password]</code>) or by name:
+<pre><code>$ sudo ./install/add_students.sh students.csv</code></pre>
+New accounts without a password get a random one (in <code>/root/fosslab_passwords.txt</code>), to be changed at the first login.</li>
+</ol>
+
+<h3>Supervising</h3>
+<p>Start <code>fosslab-supervisor</code> (desktop menu: <em>FOSSLab Supervisor</em>). It is the Library Manager plus a <strong>Student</strong> selector and a <strong>Roster</strong>:</p>
+<ul>
+<li>The roster lists every student with their libraries, cells, last change and how many simulations, DRC, LVS and PEX runs pass; private notes per student; export to CSV.</li>
+<li>Choosing a student shows their workspace, <strong>read only</strong>: open any view, browse the hierarchy, look at their DRC/LVS reports. Flows you run on their cells write to your own workspace (<code>~/fosslab/.fosslab/supervisor/&lt;student&gt;</code>), never to theirs.</li>
+<li><em>Copy to my workspace</em> on any of their cells, to try a fix.</li>
+</ul>
+<p>Access works through file ACLs, not passwords: the <code>fosslab-staff</code> group can traverse each student's home and read <code>~/fosslab</code>, and new files inherit that. Nothing else in the students' homes is readable. To let teachers also write (fix a student's file in place), set <code>FOSSLAB_ACL_MODE=rwX</code> in <code>/etc/fosslab.conf</code> and run <code>install.sh 50</code>.</p>
+
+<h3>The reference op-amp library</h3>
+<p>Everything in chapters 2 to 11 (numbers and screenshots) comes from a reference library that FOSSLab generates, so you can reproduce it, give it to the students, or change it:</p>
+<pre><code>$ fosslab example opamp                # library opamp_tut in your workspace
+$ fosslab example opamp --solution     # also the exercise's solution (opamp_va2, tb_opamp_va2)</code></pre>
+<p>It writes the op-amp (schematic, symbol, layout), the testbenches <code>tb_opamp_ac</code> and <code>tb_opamp_tran</code> with their Simulation Environment setups (outputs and specifications, 15 corners, Monte Carlo), the Verilog-A model <code>opamp_va</code> and its testbench <code>tb_opamp_va</code>. Then compile the model (<code>fosslab va opamp_tut opamp_va</code>) and run what you need.</p>
+<p><strong>Sharing it read-only with the students.</strong> Generate it without the solution in a workspace of your own (e.g. a <code>course</code> account, or your <code>~/fosslab</code>) and make that workspace readable by the students' group. Each student adds one line to their <code>~/fosslab/fosslab.lib</code> (<em>File &gt; Edit library definitions</em>):</p>
+<pre><code>INCLUDE /home/teacher/fosslab/fosslab.lib</code></pre>
+<p>The reference library then appears in their Library Manager, read only; <em>Copy cell...</em> gives them an editable copy of any cell.</p>
+
+<h3>Changing the example</h3>
+<p>The generator is <code>{{prefix}}/app/fosslab/examples/opamp.py</code>: the device sizes (<code>MOS</code>, <code>CC_SIDE</code>), the testbenches' control blocks (<code>AC_CONTROL</code>, <code>TRAN_CONTROL</code>), the setups with specifications and corners (<code>ac_setup()</code>, <code>tran_setup()</code>, <code>va_setup()</code>) and the model's parameters. The layout is drawn by <code>examples/opamp_layout.py</code> with IHP's PCells and reads the sizes from <code>opamp.py</code>; its placement and routing rules are explained at the top of the file. After a change, generate into a new library (<code>--lib opamp_v2</code>) and check it: <code>fosslab drc|lvs opamp_v2 opamp</code>.</p>
+<p>All the tutorial's screenshots and numbers are produced by one script, from scratch, with the real programs: <code>tests/make_tutorial_shots.py</code> (it writes <code>results.json</code> with every number quoted in the chapters). Run it after changing the example to update the pictures.</p>
+
+<h3>The exercise: answer key</h3>
+<table>
+<tr><th>Question</th><th>Expected answer</th></tr>
+<tr><td>1. GBW = 16.17 MHz, FP2 = 30 MHz</td><td>UGF ≈ 14.1 MHz, PM ≈ 64.4°. The second pole reduces |A| near the UGF, so the gain reaches 1 earlier: with two poles UGF &lt; GBW.</td></tr>
+<tr><td>2. Calibration</td><td>FP2 = UGF / tan(90° − PM) = 16.17 / tan(29.62°) ≈ 28.4 MHz; GBW = 16.17 · √(1 + (16.17/28.4)²) ≈ 18.6 MHz (GBW_sd scaled to ≈ 0.262 MHz). Model: 16.2 MHz, 59.8° (the small error: the dominant pole's own phase and the rounding).</td></tr>
+<tr><td>3. Monte Carlo</td><td>UGF 16.16 ± 0.18 MHz, PM 59.9 ± 0.29°, offset 1.58 ± 2.04 mV.</td></tr>
+<tr><td>4. Spread of PM</td><td>From the GBW spread: UGF moves with GBW while FP2 is fixed, so UGF/FP2 and the PM change. It matches the transistors' σ (0.30°) here by coincidence of the two mechanisms; a model with correlated GBW and FP2 (both set by the bias current) would be more faithful.</td></tr>
+<tr><td>5. Second pole</td><td>p2 ≈ g<sub>m6</sub> / (2π (C<sub>L</sub> + C<sub>1</sub>)) with the Miller effect, and a right-half-plane zero at g<sub>m6</sub>/(2π C<sub>c</sub>) that also costs phase: the calibrated FP2 lumps both.</td></tr>
+</table>
+<p>The solution model is <code>opamp_va2.va</code> in the solution library (<code>--solution</code>); keep it out of the students' reach (generate it in a library they cannot include).</p>

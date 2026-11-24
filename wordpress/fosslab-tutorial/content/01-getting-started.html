@@ -1,0 +1,47 @@
+<p>All the programs run on the course server <code>{{server}}</code>. You see them on your computer through a remote desktop (X2Go, recommended) or through SSH with X forwarding.</p>
+
+<h3>1. Log in</h3>
+<div class="fl-step"><h4>Option A: X2Go (a full desktop, best for layout work)</h4>
+<ol>
+<li>Install the X2Go client from <a href="https://wiki.x2go.org/doku.php/download:start">wiki.x2go.org</a> (Windows, macOS, Linux).</li>
+<li>New session: Host <code>{{server}}</code>, Login your user name, Session type <strong>XFCE</strong>.</li>
+<li>Connect. The first time, you are asked to change your password.</li>
+</ol></div>
+<div class="fl-step"><h4>Option B: SSH with X forwarding (Linux, or macOS with XQuartz)</h4>
+<pre><code>$ ssh -X your_user@{{server}}</code></pre>
+<p>Every window then opens on your own screen. This is fine for schematics; for large layouts X2Go is much faster.</p></div>
+
+<h3>2. Start the Library Manager</h3>
+<p>In the XFCE menu: <em>Development &gt; FOSSLab Library Manager</em>. Or, in a terminal:</p>
+<pre><code>$ fosslab</code></pre>
+<p>The first time, it creates your <strong>workspace</strong>, the folder <code>~/fosslab</code>, with one empty library called <code>work</code>.</p>
+
+<h3>3. The window</h3>
+<table>
+<tr><th>Part</th><th>What it shows</th></tr>
+<tr><td>Libraries (left)</td><td>Yours under <em>Workspace</em>; the IHP PDK libraries (read only) below: <code>sg13g2_pr</code> (transistors, resistors, capacitors), <code>sg13g2_stdcell</code> (logic gates), <code>devices</code> (sources, ground, pins), <code>sg13g2_tests</code> (IHP's example testbenches).</td></tr>
+<tr><td>Cells (middle)</td><td>The cells of the selected library, with a dot for each view it has (Sch, Sym, Lay) and a tick or a cross for its last simulation, DRC, LVS and PEX.</td></tr>
+<tr><td>Views (right)</td><td>The files of the selected cell, including the results of the flows (netlists, extracted circuits).</td></tr>
+</table>
+<p><strong>Double-click</strong> a cell or a view to open it. <strong>Right-click</strong> a library, cell or view to see everything you can do with it. The buttons at the bottom act on the selected cell.</p>
+
+<h3>4. Moving between views and through the hierarchy</h3>
+<p>Inside xschem and KLayout there is a <strong>FOSSLab</strong> menu:</p>
+<table>
+<tr><th>In xschem</th><th>In KLayout</th></tr>
+<tr><td>Open layout of this cell / of the selected instance<br>Hierarchy browser<br>Show cell in Library Manager<br>Create/update symbol from pins<br>Create testbench for this cell<br>Simulate, DRC, LVS, PEX</td>
+<td>Open schematic / symbol of this cell<br>Hierarchy browser<br>Show cell in Library Manager<br>Run DRC, LVS, PEX</td></tr>
+</table>
+<p>In xschem itself: select an instance and press <kbd>e</kbd> to descend into its schematic, <kbd>i</kbd> into its symbol, <kbd>Ctrl</kbd>+<kbd>e</kbd> to go back up. The <em>Hierarchy browser</em> shows the whole tree at once, with the views and verification status of every block.</p>
+
+<h3>5. Try it: the self-test</h3>
+<p>In the Library Manager, <em>Tools &gt; Run self-test</em>. In about a minute it builds an inverter in a temporary folder and runs the whole flow on it with the real IHP process: simulation, DRC, LVS, extraction and post-layout simulation. Every line should say PASS.</p>
+<pre class="fl-nocopy"><code>Flows:
+  [PASS] ngspice simulation: simulation finished, 1 .raw file(s); tpd = 19.0 ps
+  [PASS] DRC (IHP deck): DRC clean: 0 violations
+  [PASS] LVS (IHP deck): LVS clean: netlists match
+  [PASS] PEX (Magic): extracted 2 devices and 5 parasitic capacitors
+  [PASS] post-layout simulation: tpd = 21.4 ps (schematic: 19.0 ps)</code></pre>
+<p>Notice the last line: the extracted wire capacitances make the inverter about 12&nbsp;% slower than the schematic predicts. This is what post-layout simulation is for.</p>
+
+<div class="fl-note">Your teacher can see your workspace (read only), to help you and to follow your progress. Keep your design work inside <code>~/fosslab</code>.</div>

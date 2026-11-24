@@ -1,0 +1,138 @@
+#!/bin/bash
+# fosslab-run -- run one FOSS EDA tool inside the IIC-OSIC-TOOLS image.
+#
+#   fosslab-run TOOL [ARGS...]      e.g.  fosslab-run xschem foo.sch
+#   TOOL [ARGS...]                  when called through a symlink in $FOSSLAB_PREFIX/bin
+#
+# Runs on the host (Scientific Linux 7: bash 4.2, so no newer bash features).
+# The tool runs as the calling user, with the user's real $HOME, so files the
+# tools write belong to the student, and the supervisor's group ACLs apply.
+#
+# Configuration comes from /etc/fosslab.conf (or $FOSSLAB_CONF). Every
+# variable can also be set in the environment, which wins.
+
+set -e
+
+SELF=$(readlink -f "${BASH_SOURCE[0]}")
+RUNTIME_DIR=$(dirname "$SELF")
+
+CONF=${FOSSLAB_CONF:-/etc/fosslab.conf}
+if [ -r "$CONF" ]; then
+    # shellcheck source=/dev/null
+    . "$CONF"
+fi
+
+: "${FOSSLAB_PREFIX:=$(dirname "$RUNTIME_DIR")}"
+: "${FOSSLAB_RUNTIME:=apptainer}"                    # apptainer | podman
+: "${FOSSLAB_IMAGE:=$FOSSLAB_PREFIX/images/iic-osic-tools.sif}"
+: "${FOSSLAB_PODMAN_IMAGE:=docker.io/hpretl/iic-osic-tools:latest}"
+: "${FOSSLAB_BINDS:=/home}"                          # extra host dirs visible in the container
+: "${FOSSLAB_WORKSPACE:=$HOME/fosslab}"
+: "${FOSSLAB_STUDENT_GROUP:=fosslab}"
+: "${FOSSLAB_STAFF_GROUP:=fosslab-staff}"
+: "${FOSSLAB_WS_NAME:=fosslab}"
+: "${FOSSLAB_ACL_MODE:=rX}"
+
+# Which tool? Through a symlink the tool is the link name.
+TOOL=$(basename "$0")
+if [ "$TOOL" = "fosslab-run" ]; then
+    if [ $# -eq 0 ]; then
+        echo "usage: fosslab-run TOOL [ARGS...]" >&2
+        exit 2
+    fi
+    TOOL=$1
+    shift
+fi
+
+die() { echo "fosslab-run: $*" >&2; exit 1; }
+
+# --- host-side work that must happen outside the container -----------------
+
+# Supervisor: hand the roster (students and their homes) to the container,
+# which cannot see the host's full group database.
+if [ "$TOOL" = "fosslab-supervisor" ]; then
+    members=$(getent group "$FOSSLAB_STUDENT_GROUP" | cut -d: -f4)
+    roster=""
+    IFS=',' read -r -a _users <<< "$members"
+    for u in "${_users[@]}"; do
+        [ -n "$u" ] || continue
+        h=$(getent passwd "$u" | cut -d: -f6)
+        [ -n "$h" ] || continue
+        roster="$roster${roster:+;}$u:$h"
+    done
+    export FOSSLAB_ROSTER="$roster"
+    [ -n "$FOSSLAB_DEBUG" ] && echo "fosslab-run: roster: $roster" >&2
+fi
+
+# Student: keep the supervisor's read access on everything in the workspace.
+# Cheap: only files newer than the last fix are touched.
+if [ "$TOOL" = "fosslab" ] && [ -d "$FOSSLAB_WORKSPACE" ] && [ -O "$FOSSLAB_WORKSPACE" ] \
+   && command -v setfacl >/dev/null 2>&1 && getent group "$FOSSLAB_STAFF_GROUP" >/dev/null 2>&1; then
+    stamp="$FOSSLAB_WORKSPACE/.fosslab/acl.stamp"
+    mkdir -p "$FOSSLAB_WORKSPACE/.fosslab"
+    if [ -f "$stamp" ]; then
+        find "$FOSSLAB_WORKSPACE" -newer "$stamp" -print0 2>/dev/null \
+            | xargs -0 -r setfacl -m "g:$FOSSLAB_STAFF_GROUP:$FOSSLAB_ACL_MODE" 2>/dev/null || true
+    else
+        setfacl -R -m "g:$FOSSLAB_STAFF_GROUP:$FOSSLAB_ACL_MODE" "$FOSSLAB_WORKSPACE" 2>/dev/null || true
+        find "$FOSSLAB_WORKSPACE" -type d -print0 \
+            | xargs -0 -r setfacl -d -m "g:$FOSSLAB_STAFF_GROUP:$FOSSLAB_ACL_MODE" 2>/dev/null || true
+    fi
+    touch "$stamp"
+fi
+
+# --- variables passed into the container ------------------------------------
+
+PASS_VARS="DISPLAY XAUTHORITY TERM LANG USER LOGNAME FOSSLAB_PREFIX FOSSLAB_WORKSPACE
+FOSSLAB_ROSTER FOSSLAB_STUDENT_GROUP FOSSLAB_STAFF_GROUP FOSSLAB_WS_NAME FOSSLAB_EDITOR
+FOSSLAB_TUTORIAL_URL FOSSLAB_DEBUG"
+
+[ -n "$XAUTHORITY" ] || { [ -f "$HOME/.Xauthority" ] && export XAUTHORITY="$HOME/.Xauthority"; }
+export FOSSLAB_PREFIX FOSSLAB_WORKSPACE FOSSLAB_STUDENT_GROUP FOSSLAB_STAFF_GROUP FOSSLAB_WS_NAME
+
+ENTRY=(/bin/bash "$FOSSLAB_PREFIX/runtime/container-env.sh" "$TOOL" "$@")
+
+case "$FOSSLAB_RUNTIME" in
+apptainer|singularity)
+    RT=$(command -v apptainer || command -v singularity) || die "apptainer is not installed"
+    [ -r "$FOSSLAB_IMAGE" ] || die "image $FOSSLAB_IMAGE not found (run install/30_image.sh)"
+    for v in $PASS_VARS; do
+        if [ -n "${!v+x}" ]; then
+            export "APPTAINERENV_$v=${!v}" "SINGULARITYENV_$v=${!v}"
+        fi
+    done
+    args=(exec --cleanenv --pwd "$PWD" --bind "$FOSSLAB_PREFIX")
+    for b in $FOSSLAB_BINDS; do
+        [ -e "${b%%:*}" ] && args+=(--bind "$b")
+    done
+    exec "$RT" "${args[@]}" "$FOSSLAB_IMAGE" "${ENTRY[@]}"
+    ;;
+podman|docker)
+    RT=$(command -v "$FOSSLAB_RUNTIME") || die "$FOSSLAB_RUNTIME is not installed"
+    args=(run --rm -i --net=host --security-opt label=disable
+          -e "HOME=$HOME" -w "$PWD" --entrypoint /bin/bash)
+    [ -t 0 ] && [ -t 1 ] && args+=(-t)
+    if [ "$FOSSLAB_RUNTIME" = podman ]; then
+        args+=(--userns=keep-id)
+    else
+        args+=(--user "$(id -u):$(id -g)")
+    fi
+    for v in $PASS_VARS; do
+        [ -n "${!v+x}" ] && args+=(-e "$v")
+    done
+    args+=(-v "$HOME:$HOME" -v /tmp:/tmp)
+    case "$FOSSLAB_PREFIX/" in
+        "$HOME"/*) ;;
+        *) args+=(-v "$FOSSLAB_PREFIX:$FOSSLAB_PREFIX:ro") ;;
+    esac
+    for b in $FOSSLAB_BINDS; do
+        src=${b%%:*}
+        case "$src/" in "$HOME"/*|"$HOME/") continue ;; esac
+        [ -e "$src" ] && args+=(-v "$src:${b#*:}")
+    done
+    exec "$RT" "${args[@]}" "$FOSSLAB_PODMAN_IMAGE" "${ENTRY[@]:1}"
+    ;;
+*)
+    die "unknown FOSSLAB_RUNTIME '$FOSSLAB_RUNTIME' (use apptainer or podman)"
+    ;;
+esac

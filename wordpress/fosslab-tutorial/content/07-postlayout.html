@@ -1,0 +1,18 @@
+<p>The layout adds wire capacitances that the schematic does not have. Post-layout simulation tells what they cost.</p>
+
+<h3>1. Extract</h3>
+<p><em>FOSSLab &gt; Extract parasitics (PEX)</em> or the <em>PEX</em> button. Magic reads the layout and writes <code>opamp_pex.spice</code>: the transistors (one per finger: 70 for the reference layout) and every capacitance between wires and to substrate (424 here). It appears as the view <em>Extracted + parasitics</em>.</p>
+
+<h3>2. Simulate with the extracted view</h3>
+<p>Select the testbench <code>tb_opamp_ac</code>, right-click &gt; <em>Run &gt; Simulate with extracted views...</em> and tick <code>opamp</code>. The testbench is not changed: FOSSLab replaces the op-amp's schematic by its extracted netlist in the simulation, connecting the pins by name (the extractor orders them its own way). From the command line: <code>fosslab sim opamp_tut tb_opamp_ac --extracted opamp</code>.</p>
+
+<h3>3. What the layout costs</h3>
+<table>
+<tr><th></th><th>Schematic</th><th>Post-layout</th><th>Change</th></tr>
+<tr><td>DC gain</td><td>57.61 dB</td><td>57.61 dB</td><td>none</td></tr>
+<tr><td>Unity-gain frequency</td><td>16.17 MHz</td><td>15.71 MHz</td><td>−2.9 %</td></tr>
+<tr><td>Phase margin</td><td>60.4°</td><td>58.6°</td><td>−1.8°</td></tr>
+<tr><td>Slew rate (rise / fall)</td><td>10.6 / 10.3 V/µs</td><td>10.4 / 9.9 V/µs</td><td>−2 to −4 %</td></tr>
+<tr><td>Offset</td><td>1.73 mV</td><td>1.72 mV</td><td>none</td></tr>
+</table>
+<p>DC results do not change (wires add no DC path); everything that depends on capacitance does. The extra capacitance at the first stage's output and at OUT lowers the second pole: less bandwidth and phase margin. All specifications are still met.</p>

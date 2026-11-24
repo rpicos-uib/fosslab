@@ -1,0 +1,50 @@
+<p>A chip must work on every die the factory makes, at every temperature and supply it will see. Corners are the extreme combinations. FOSSLab's <strong>Simulation Environment</strong> runs them: you describe the corners in a table and the measurements in another, press Run, and read a table of results with pass/fail against the specifications.</p>
+
+<h3>1. Open the Simulation Environment</h3>
+<p>Select the testbench <code>tb_opamp_ac</code> in the Library Manager and press <em>Sim. Environment</em> (or right-click &gt; <em>Simulation Environment...</em>, or in xschem <em>FOSSLab &gt; Simulation Environment</em>). One window per testbench, with five tabs. Whatever you set is saved with the testbench (<em>Save setup</em>, and automatically at every run) in <code>tb_opamp_ac.simenv.json</code>, next to its schematic: it is there the next time, for you and for your teacher.</p>
+
+<h3>2. Design variables</h3>
+<figure><img src="{{img}}/ade_variables.png" alt="Design variables tab"><figcaption>Design variables: the <code>.param</code> values of the testbench.</figcaption></figure>
+<p>The first time, the list is read from the testbench's <code>.param</code> lines (<em>Read from schematic</em> does it again after you add one). Change a value here (<em>Edit</em> or double-click) to simulate with it without touching the schematic, e.g. <code>cl = 2p</code> to see what a heavier load does. <em>Add</em> creates a new variable: it is added as a <code>.param</code> line, so the schematic can use it as <code>{name}</code>.</p>
+
+<h3>3. Outputs: the performance measurements</h3>
+<figure><img src="{{img}}/ade_outputs.png" alt="Outputs tab"><figcaption>Outputs: what to collect from each run, how to show it, and the specification.</figcaption></figure>
+<table>
+<tr><th>Column</th><th>Meaning</th></tr>
+<tr><td>Name</td><td>The name ngspice prints the value with. For <code>a0</code>, <code>ugf</code>, <code>pm</code>, <code>vos</code>, <code>pdiss</code> the testbench itself prints them (its <code>meas</code> and <code>print</code> lines).</td></tr>
+<tr><td>Expression</td><td>For a measurement the testbench does not make: how to compute it, in ngspice's language. Either a whole <code>meas</code> statement, e.g. <code>meas ac g1m find vdb(out) at=1e6</code> (gain at 1 MHz), or an expression, e.g. <code>vdb(out)[0]</code>, which FOSSLab stores with <code>let</code> and prints. It is added at the end of the control block, so it works on the last analysis.</td></tr>
+<tr><td>Lower, Upper</td><td>The specification. Empty: no limit. A result outside is shown in red with ✘.</td></tr>
+<tr><td>Scale, Unit</td><td>How to show it: the value is multiplied by Scale (<code>1e-6</code> to see Hz as MHz, <code>1e3</code> for V as mV).</td></tr>
+</table>
+<p>Under the table, <em>Waveform to plot for every run</em>: an ngspice vector, e.g. <code>vdb(out)</code> with <em>log x axis</em>, drawn for all corners on top of each other.</p>
+<p><strong>Try it:</strong> <em>Add</em> an output named <code>g1m</code>, Expression <code>meas ac g1m find vdb(out) at=1e6</code>, Label <code>Gain at 1 MHz</code>, Lower <code>20</code>, Unit <code>dB</code>. Nothing changes in the schematic.</p>
+
+<h3>4. Corners</h3>
+<figure><img src="{{img}}/ade_corners.png" alt="Corners tab"><figcaption>The corners: one column per corner.</figcaption></figure>
+<p>Each column is a corner; each row, what defines it:</p>
+<ul>
+<li><strong>Run</strong>: untick to keep a corner but not run it.</li>
+<li><strong>MOS / CAP / RES models</strong>: the section of IHP's model libraries. MOS: <code>mos_tt</code> (typical), <code>mos_ss</code> (slow NMOS, slow PMOS), <code>mos_ff</code>, <code>mos_sf</code> (slow NMOS, fast PMOS), <code>mos_fs</code>. Capacitors: <code>cap_typ</code>, <code>cap_bcs</code>/<code>cap_wcs</code> (best/worst case). FOSSLab replaces the section in the testbench's <code>.lib</code> lines.</li>
+<li><strong>temp</strong>: the temperature in °C.</li>
+<li>One row per <strong>design variable</strong>: empty uses the value of the Design variables tab; a value overrides it for this corner only (e.g. <code>vdd</code> = 1.08 for a low-supply corner).</li>
+</ul>
+<p>To change the table: click in any cell and type, or pick from the list. <em>Add corner</em> adds a column; click a corner's name, then <em>Copy corner</em> (a copy next to it, to modify) or <em>Delete corner</em>. <em>Standard set...</em> builds the classic table: the five MOS sections × the temperatures you give (−40, 27, 125) × the supply values you give for a variable (leave it empty for none). The reference setup has the 15 corners of five sections × three temperatures.</p>
+<p>Press <strong>Run corners</strong>. The corners run in parallel (ngspice in batch, one per CPU core); the progress bar and the log show them finish.</p>
+
+<h3>5. Results</h3>
+<figure><img src="{{img}}/ade_corners_results.png" alt="Corner results"><figcaption>Corner results: one row per output, one column per corner, red where a specification fails. Clicking an output shows it per corner, with its limit.</figcaption></figure>
+<p>Click <em>Waveforms: all runs</em> for the overlay of the waveform of every corner:</p>
+<figure><img src="{{img}}/corners_waves.png" alt="Gain of every corner"><figcaption>Open-loop gain in the 15 corners.</figcaption></figure>
+<table>
+<tr><th>Corner</th><th>A0 (dB)</th><th>UGF (MHz)</th><th>PM (°)</th><th>Offset (mV)</th></tr>
+<tr><td>tt, −40 / 27 / 125 °C</td><td>58.98 / 57.61 / 55.87</td><td>19.72 / 16.17 / <b>12.48</b></td><td>58.6 / 60.4 / 62.8</td><td>1.49 / 1.73 / 2.28</td></tr>
+<tr><td>ss</td><td>58.96 / 57.51 / 55.71</td><td>17.75 / <b>14.55</b> / <b>11.24</b></td><td>61.3 / 62.8 / 64.9</td><td>0.44 / 0.41 / 0.50</td></tr>
+<tr><td>ff</td><td>59.11 / 57.79 / 56.05</td><td>22.11 / 18.12 / <b>13.98</b></td><td>55.4 / 57.5 / 60.2</td><td>3.81 / <b>5.05</b> / <b>7.23</b></td></tr>
+<tr><td>sf</td><td>59.34 / 57.94 / 56.18</td><td>19.51 / 15.99 / <b>12.35</b></td><td>58.7 / 60.6 / 63.0</td><td>0.86 / 0.92 / 1.15</td></tr>
+<tr><td>fs</td><td>58.71 / 57.35 / 55.52</td><td>19.98 / 16.38 / <b>12.62</b></td><td>58.4 / 60.2 / 62.5</td><td>2.52 / 3.13 / 4.30</td></tr>
+</table>
+<p>What the corners tell: hot silicon is slow (mobility falls), so the bandwidth spec fails at 125 °C in every corner, and also in the slow corner at room temperature. The phase margin is lowest where the op-amp is fastest (ff, −40 °C: 55.4°, just at the limit). The systematic offset grows when the NMOS are fast (ff, fs): the balance between M6 and M4 that cancels it only holds for matched NMOS and PMOS. These are the specifications to improve: a bigger bias current, or longer devices in the critical places.</p>
+<p><em>Open results.csv</em> gives every number in a spreadsheet file; <em>Terminal in run folder</em> opens the folder with each corner's netlist and log (<code>~/fosslab/sim/opamp_tut/tb_opamp_ac/corners/</code>).</p>
+
+<h3>From the command line</h3>
+<p>The same setup runs without the window (handy for long runs or scripts): <code>fosslab corners opamp_tut tb_opamp_ac</code> prints the table and writes the same files.</p>

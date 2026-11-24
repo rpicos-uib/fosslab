@@ -1,0 +1,3 @@
+#!/bin/bash
+# Inside the container: the FOSSLab manager and command-line interface.
+exec python3 -m fosslab "$@"

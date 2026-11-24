@@ -1,0 +1,67 @@
+<h3>Workspace layout</h3>
+<pre class="fl-nocopy"><code>~/fosslab/
+  fosslab.lib                 library definitions
+  libs/&lt;library&gt;/&lt;cell&gt;/      one folder per cell, one file per view
+      &lt;cell&gt;.sch .sym .gds .va .v .spice .md
+      &lt;tb&gt;.simenv.json            a testbench's Simulation Environment setup
+  sim/&lt;library&gt;/&lt;cell&gt;/       simulations: netlist, .raw waveforms, logs
+      corners/ montecarlo/     Simulation Environment runs: one folder per run,
+                               results.csv, histograms, bar charts
+  verif/&lt;library&gt;/&lt;cell&gt;/    drc/  lvs/  pex/  with their reports and status
+</code></pre>
+<p><code>fosslab.lib</code> accepts <code>DEFINE &lt;library&gt; &lt;folder&gt;</code> and <code>INCLUDE &lt;another fosslab.lib&gt;</code> (for instance a library your teacher shares, which you see read only).</p>
+
+<h3>Commands</h3>
+<p>Every action of the Library Manager is also a command (in a terminal on the server):</p>
+<table>
+<tr><th>Command</th><th>Does</th></tr>
+<tr><td><code>fosslab</code></td><td>the Library Manager</td></tr>
+<tr><td><code>fosslab libs</code>, <code>fosslab cells LIB</code></td><td>list libraries; cells with their views and status</td></tr>
+<tr><td><code>fosslab new-lib NAME</code></td><td>new library</td></tr>
+<tr><td><code>fosslab new-cell LIB CELL --views schematic,symbol</code></td><td>new cell with views</td></tr>
+<tr><td><code>fosslab open LIB CELL --view layout</code></td><td>open a view in its program</td></tr>
+<tr><td><code>fosslab hier LIB CELL</code></td><td>print the design hierarchy (<code>--gui</code> for the browser)</td></tr>
+<tr><td><code>fosslab symbol LIB CELL</code></td><td>symbol from the schematic's pins</td></tr>
+<tr><td><code>fosslab testbench LIB CELL</code></td><td>new testbench cell <code>tb_CELL</code></td></tr>
+<tr><td><code>fosslab sim LIB CELL</code></td><td>netlist and simulate (<code>--extracted c1,c2</code>: use PEX views)</td></tr>
+<tr><td><code>fosslab drc|lvs|pex LIB CELL</code></td><td>verification (<code>--show</code>: in a window)</td></tr>
+<tr><td><code>fosslab va LIB CELL</code></td><td>compile the Verilog-A view</td></tr>
+<tr><td><code>fosslab copy SRCLIB CELL DSTLIB [NEW]</code></td><td>copy a cell (also from the PDK examples)</td></tr>
+<tr><td><code>fosslab rename LIB CELL NEW</code></td><td>rename, updating the instances in your schematics</td></tr>
+<tr><td><code>fosslab simenv LIB TB</code></td><td>the Simulation Environment of a testbench</td></tr>
+<tr><td><code>fosslab corners LIB TB</code></td><td>run its corners (saved setup), print the table</td></tr>
+<tr><td><code>fosslab mc LIB TB [-n 200] [--variation mismatch|process] [--seed 1]</code></td><td>run its Monte Carlo, print the statistics</td></tr>
+<tr><td><code>fosslab example opamp [--lib NAME]</code></td><td>the tutorial's reference library, generated in your workspace</td></tr>
+<tr><td><code>fosslab status</code></td><td>last results of every cell</td></tr>
+<tr><td><code>fosslab selftest</code></td><td>check every tool and flow</td></tr>
+</table>
+<p>The programs themselves are available too: <code>xschem</code>, <code>klayout</code>, <code>ngspice</code>, <code>magic</code>, <code>netgen</code>, <code>openvaf</code>, <code>iverilog</code>, <code>gtkwave</code>, <code>yosys</code>... and <code>fosslab-shell</code> opens a shell with the whole environment.</p>
+
+<h3>Keys worth knowing</h3>
+<table>
+<tr><th>xschem</th><th></th><th>KLayout</th><th></th></tr>
+<tr><td><kbd>Insert</kbd></td><td>place a symbol</td><td><kbd>F2</kbd></td><td>zoom to fit</td></tr>
+<tr><td><kbd>w</kbd></td><td>draw a wire</td><td><kbd>*</kbd></td><td>show all hierarchy levels</td></tr>
+<tr><td><kbd>q</kbd></td><td>edit properties</td><td><kbd>b</kbd> / <kbd>p</kbd></td><td>box / path</td></tr>
+<tr><td><kbd>e</kbd> / <kbd>Ctrl</kbd>+<kbd>e</kbd></td><td>descend / go up</td><td><kbd>i</kbd></td><td>instance (PCells: library SG13_dev)</td></tr>
+<tr><td><kbd>i</kbd></td><td>descend into symbol</td><td><kbd>k</kbd></td><td>ruler</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>s</kbd></td><td>save</td><td><kbd>Ctrl</kbd>+<kbd>s</kbd></td><td>save</td></tr>
+</table>
+
+<h3>The Simulation Environment's setup file</h3>
+<p>Everything the Simulation Environment window shows is saved in <code>&lt;testbench&gt;.simenv.json</code> next to the testbench's schematic. You never need to edit it by hand, but it is plain text, and it is sometimes quicker (e.g. to copy a corner table from one testbench to another):</p>
+<pre class="fl-nocopy"><code>{
+  "variables": {"vdd": "1.2", "vcm": "0.8", "ibias": "10u", "cl": "1p"},
+  "outputs": [
+    {"name": "a0", "label": "DC gain", "min": 55, "max": null, "scale": 1.0, "unit": "dB", "expr": ""},
+    {"name": "g1m", "label": "Gain at 1 MHz", "min": 20, "max": null, "scale": 1.0, "unit": "dB",
+     "expr": "meas ac g1m find vdb(out) at=1e6"}
+  ],
+  "corners": [
+    {"name": "ss_125C", "enabled": true, "mos": "mos_ss", "cap": "cap_wcs", "res": "res_typ",
+     "temp": 125, "vars": {"vdd": "1.08"}}
+  ],
+  "montecarlo": {"runs": 200, "variation": "mismatch", "seed": 1, "jobs": 8},
+  "wave": "vdb(out)", "wave_logx": true
+}</code></pre>
+<p>What a run does with it: the testbench is netlisted once; for each corner or Monte Carlo sample FOSSLab copies the netlist and changes the IHP <code>.lib</code> sections (<code>mos_tt</code> → the corner's, or → <code>mos_tt_mismatch</code>/<code>mos_tt_stat</code> for Monte Carlo), every <code>.param</code> of a variable, the temperature and the random seed; adds the outputs' expressions and the waveform at the end of the control block; runs ngspice; and collects every <code>name = value</code> ngspice prints.</p>

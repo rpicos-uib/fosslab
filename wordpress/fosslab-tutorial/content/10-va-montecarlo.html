@@ -1,0 +1,50 @@
+<p>A Monte Carlo run of the transistor-level op-amp simulates 9 devices plus, after layout, hundreds of parasitic capacitors. In a system with ten op-amps (a filter, a ΔΣ modulator) and long transients that becomes very slow. The usual way out: characterise the op-amp once with transistor-level Monte Carlo, then give its <strong>Verilog-A model</strong> parameters with the same statistical distribution, and run the system-level Monte Carlo with the model. This chapter does it for the op-amp itself, so we can check that the model reproduces the transistor-level statistics.</p>
+
+<h3>What you need</h3>
+<ul>
+<li>The model <code>opamp_va</code>, compiled, and its testbench <code>tb_opamp_va</code> (chapter 4).</li>
+<li>The transistor-level Monte Carlo of <code>tb_opamp_ac</code>, mismatch, 200 runs (chapter 9).</li>
+</ul>
+
+<h3>1. How the model gets random parameters</h3>
+<p>The testbench <code>tb_opamp_va</code> already prepares it. Each model parameter is drawn from a Gaussian whose mean and standard deviation are design variables:</p>
+<pre class="fl-nocopy"><code>.param A0dB_mean=57.6 A0dB_sd=0
+.param A0dB_mc=agauss(A0dB_mean, A0dB_sd, 1)
+...
+.model opamp_va_model opamp_va A0dB={A0dB_mc} GBW={GBW_mc} VOS={VOS_mc} SR=10.6e6</code></pre>
+<p><code>agauss(mean, sd, 1)</code> draws a new value every time ngspice reads the netlist, with the random seed of the run. The Simulation Environment gives every Monte Carlo run its own seed, so every run gets a different op-amp, exactly as with the transistors. With the <code>_sd</code> variables at 0 (as in chapter 4) every run is the nominal op-amp.</p>
+
+<h3>2. Take the statistics from the transistor-level Monte Carlo</h3>
+<p>Open the Simulation Environment of <code>tb_opamp_ac</code>, tab <em>Results</em> (after the Monte Carlo of chapter 9), and read the mean and σ of three outputs. Convert them to the model's parameters and units:</p>
+<table>
+<tr><th>Transistor-level output</th><th>Mean</th><th>σ</th><th>Model variable</th><th>_mean</th><th>_sd</th></tr>
+<tr><td>DC gain</td><td>57.61 dB</td><td>0.031 dB</td><td>A0dB</td><td>57.61</td><td>0.031</td></tr>
+<tr><td>Unity-gain frequency</td><td>16.17 MHz</td><td>0.228 MHz</td><td>GBW (Hz)</td><td>1.617e7</td><td>2.28e5</td></tr>
+<tr><td>Output offset</td><td>1.72 mV</td><td>2.14 mV</td><td>VOS (V)</td><td>1.98e-3</td><td>2.14e-3</td></tr>
+</table>
+<p>For a one-pole op-amp the unity-gain frequency <em>is</em> the gain-bandwidth product, so GBW takes the UGF statistics. VOS is input-referred: add the follower's gain error (V<sub>CM</sub> − V<sub>DD</sub>/2)/A0 = 0.2 V / 759 = 0.26 mV to the mean (chapter 4); the σ stays.</p>
+<div class="fl-note">This is a simplification worth saying: the three parameters are drawn independently, as if they were uncorrelated. For mismatch that is a good approximation (the offset depends on the differences between twin devices, the gain and bandwidth on their sums). For process variation it is not: when the NMOS are fast, gain and bandwidth move together.</div>
+
+<h3>3. Enter them in the Simulation Environment</h3>
+<ol>
+<li>Select <code>tb_opamp_va</code> and press <em>Sim. Environment</em>.</li>
+<li>Tab <em>Design variables</em>: double-click each of the six <code>_mean</code> and <code>_sd</code> variables and type the values of the table. (<code>vdd</code>, <code>vcm</code>, <code>ibias</code>, <code>cl</code> stay.)</li>
+<li>Tab <em>Monte Carlo</em>: Number of runs 200, Starting run 1. The analysis variation only changes IHP's transistor models, and this testbench has no transistors: leave it as it is.</li>
+<li><em>Run Monte Carlo</em>.</li>
+</ol>
+<figure><img src="{{img}}/ade_va_variables.png" alt="Model statistics as design variables"><figcaption>The statistics of the transistor-level Monte Carlo, entered as design variables of the model's testbench.</figcaption></figure>
+
+<h3>4. Compare</h3>
+<figure><img src="{{img}}/ade_va_mc_results.png" alt="Model Monte Carlo results"><figcaption>Monte Carlo with the Verilog-A model: 200 runs.</figcaption></figure>
+<table>
+<tr><th>Output (200 runs)</th><th>Transistors: mean ± σ</th><th>Model: mean ± σ</th></tr>
+<tr><td>DC gain</td><td>57.61 ± 0.031 dB</td><td>57.61 ± 0.031 dB</td></tr>
+<tr><td>Unity-gain frequency</td><td>16.17 ± 0.228 MHz</td><td>16.16 ± 0.229 MHz</td></tr>
+<tr><td>Output offset</td><td>1.72 ± 2.14 mV</td><td>1.58 ± 2.04 mV</td></tr>
+<tr><td>Offset yield (±5 mV)</td><td>94.5 %</td><td>95.5 %</td></tr>
+<tr><td>Phase margin</td><td>60.38 ± 0.30°</td><td><strong>89.49 ± 0.008°</strong></td></tr>
+</table>
+<figure><img src="{{img}}/va_mc_hist_vos.png" alt="Offset histogram with the model"><figcaption>The model's offset distribution: compare it with the transistor-level histogram of chapter 9.</figcaption></figure>
+<p>Gain, bandwidth and offset are reproduced: the differences (0.14 mV in the mean offset, 5 % in its σ) are what two independent sets of 200 samples give (the uncertainty of a mean is σ/√N = 2.14/√200 = 0.15 mV). The model's Monte Carlo is as good as the transistors' for everything the model contains.</p>
+<figure><img src="{{img}}/va_mc_hist_pm.png" alt="Phase margin histogram with the model"><figcaption>The phase margin with the model: always 89.5°. A one-pole model cannot do anything else.</figcaption></figure>
+<p>The phase margin is not reproduced at all: 89.5° in every run, while the transistors give 60.4° ± 0.3°. The model has no second pole, so it would say that any feedback circuit built with this op-amp is perfectly stable and never rings. That is the next step: your exercise.</p>

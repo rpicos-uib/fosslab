@@ -1,0 +1,3 @@
+#!/bin/bash
+# Inside the container: the manager in supervisor mode.
+exec python3 -m fosslab gui --supervisor "$@"

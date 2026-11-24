@@ -1,0 +1,38 @@
+<p>Two transistors drawn identically are never identical: random variations of doping, oxide and edges make each device slightly different. This <strong>mismatch</strong> gives the op-amp an input offset that changes from chip to chip. Monte Carlo simulation draws hundreds of random circuits from IHP's statistical models to estimate the distribution.</p>
+
+<h3>1. Set it up</h3>
+<p>In the Simulation Environment of <code>tb_opamp_ac</code>, tab <em>Monte Carlo</em>:</p>
+<figure><img src="{{img}}/ade_montecarlo.png" alt="Monte Carlo tab"><figcaption>Monte Carlo setup.</figcaption></figure>
+<table>
+<tr><th>Field</th><th>Meaning</th></tr>
+<tr><td>Number of runs</td><td>How many random circuits. 200 gives a σ good to about 10 %.</td></tr>
+<tr><td>Analysis variation</td><td><code>mismatch</code>: device-to-device variation on one chip (IHP's <code>mos_tt_mismatch</code>, <code>cap_typ_mismatch</code> sections): offset, matching. <code>process</code>: chip-to-chip variation of the whole process (<code>mos_tt_stat</code>, <code>cap_typ_stat</code>): every transistor's Vth, mobility, oxide... shift together.</td></tr>
+<tr><td>Starting run # (seed)</td><td>Run <em>n</em> uses the random seed <em>start + n</em>. The same start gives the same samples; change it for a new set.</td></tr>
+<tr><td>Parallel jobs</td><td>How many simulations at a time.</td></tr>
+</table>
+<p>The outputs and their specifications are those of the Outputs tab. Press <strong>Run Monte Carlo</strong>: 200 runs take a few seconds.</p>
+<div class="fl-note">How it works: in IHP's mismatch models each transistor's threshold voltage, mobility, width and length get a random deviation (<code>agauss</code>) that depends on its area (Pelgrom: σ ∝ 1/√(W·L)), drawn when ngspice reads the netlist. FOSSLab runs the testbench N times, each time with <code>.option seed=</code><em>n</em> and the model section changed to <code>…_mismatch</code>, and collects the outputs.</div>
+
+<h3>2. Results</h3>
+<figure><img src="{{img}}/ade_mc_results.png" alt="Monte Carlo results"><figcaption>Monte Carlo results: statistics of every output, the fraction of runs that meet each specification, and the overall yield. Click an output for its histogram.</figcaption></figure>
+<table>
+<tr><th>Output (200 runs, mismatch)</th><th>Mean</th><th>σ</th><th>Min … Max</th></tr>
+<tr><td>Output offset</td><td>1.72 mV</td><td>2.14 mV</td><td>−3.40 … 7.77 mV</td></tr>
+<tr><td>DC gain</td><td>57.61 dB</td><td>0.031 dB</td><td>57.52 … 57.69 dB</td></tr>
+<tr><td>Unity-gain frequency</td><td>16.17 MHz</td><td>0.228 MHz</td><td>15.49 … 16.81 MHz</td></tr>
+<tr><td>Phase margin</td><td>60.38°</td><td>0.30°</td><td>59.47 … 61.11°</td></tr>
+<tr><td>Power</td><td>90.8 µW</td><td>1.2 µW</td><td></td></tr>
+</table>
+<figure><img src="{{img}}/mc_hist_vos.png" alt="Offset histogram"><figcaption>Output offset: mean 1.72 mV (the systematic offset), σ 2.14 mV (mismatch). The dashed lines are the ±5 mV specification.</figcaption></figure>
+<p>Mismatch hardly changes gain, bandwidth or phase margin: they depend on the sum of many devices, and the variations average out. It dominates the offset: σ = 2.14 mV, and 5.5 % of the circuits are outside ±5 mV: <strong>yield 94.5 %</strong>. The input pair contributes σ<sub>ΔVth</sub> ≈ √2 · 3.9 mV·µm / √(8 µm · 1 µm) ≈ 1.95 mV; the current mirror M3/M4 the rest. To halve the offset, make the input pair and the mirror four times bigger in area (at the cost of capacitance, hence bandwidth).</p>
+<figure><img src="{{img}}/mc_waves.png" alt="Monte Carlo family of curves"><figcaption>The family of open-loop gain curves of the 200 runs (<em>Waveforms: all runs</em>).</figcaption></figure>
+<p>Now try <em>Analysis variation = process</em> (200 runs): every transistor of a chip shifts together, the way the corners assume, but drawn statistically:</p>
+<table>
+<tr><th>Output (200 runs)</th><th>σ, mismatch</th><th>σ, process</th></tr>
+<tr><td>DC gain</td><td>0.031 dB</td><td>0.24 dB</td></tr>
+<tr><td>Unity-gain frequency</td><td>0.23 MHz</td><td>0.52 MHz</td></tr>
+<tr><td>Phase margin</td><td>0.30°</td><td>0.76°</td></tr>
+<tr><td>Output offset</td><td>2.14 mV (mean 1.72)</td><td>1.90 mV (mean 2.26, up to 15 mV)</td></tr>
+</table>
+<p>Gain, bandwidth and phase margin now spread 2 to 8 times more. The offset changes as well, for another reason: not random differences between twin transistors, but the systematic offset, which depends on how fast the NMOS are compared with the PMOS (as in the ff corner). Yield: 91 %.</p>
+<p>From the command line: <code>fosslab mc opamp_tut tb_opamp_ac -n 200 --variation mismatch --seed 1</code>. Every run's netlist and log stay in <code>~/fosslab/sim/opamp_tut/tb_opamp_ac/montecarlo/</code>, with <code>results.csv</code> (one row per run) and the histograms.</p>

@@ -1,0 +1,67 @@
+<p>A behavioural model describes what the op-amp does with a few equations instead of eight transistors. It simulates much faster, and it is what you use when the op-amp is one block of a bigger system (a filter, an ADC). Here it will also let us run Monte Carlo without the transistors (chapter 10).</p>
+
+<h3>1. The model</h3>
+<p>Create the cell <code>opamp_va</code> with a <em>Verilog-A</em> view (<em>File &gt; New cell...</em>, tick <em>Verilog-A</em>). It opens in the text editor. The model has the same pins as the transistor-level op-amp, so it can take its place in any testbench:</p>
+<pre class="fl-nocopy"><code>module opamp_va(INP, INN, OUT, IBIAS, VDD, VSS);
+    inout INP, INN, OUT, IBIAS, VDD, VSS;
+    electrical INP, INN, OUT, IBIAS, VDD, VSS;
+    electrical n1;                      // internal node: the dominant pole
+
+    parameter real A0dB    = 57.6;      // DC gain (dB)
+    parameter real GBW     = 16.2e6;    // gain-bandwidth product (Hz)
+    parameter real VOS     = 1.98e-3;   // input-referred offset (V)
+    parameter real SR      = 10.6e6;    // slew rate (V/s)
+    ...
+    analog begin
+        a0   = pow(10, A0dB / 20);
+        gm   = 1e-3;                    // any value: only gm*r1 and gm/c1 matter
+        r1   = a0 / gm;                 // DC gain a0 = gm * r1
+        c1   = gm / (2 * `M_PI * GBW);  // unity gain at GBW
+        imax = SR * c1;                 // slewing: c1 charged at most with imax
+        vmid = (V(VDD) + V(VSS)) / 2;
+
+        // input stage: limited transconductance into r1 // c1
+        I(n1, VSS) &lt;+ -imax * tanh(gm * (V(INP, INN) + VOS) / imax);
+        I(n1, VSS) &lt;+ (V(n1) - vmid) / r1;
+        I(n1, VSS) &lt;+ c1 * ddt(V(n1, VSS));
+
+        // output: follows n1, kept VMARGIN away from the rails
+        ...
+        I(OUT, VSS) &lt;+ (V(OUT) - vt) / ROUT;
+    end
+endmodule</code></pre>
+<p>The whole file, with comments, is in the reference library (<code>opamp_tut/opamp_va/opamp_va.va</code>). One pole (r1 and c1), slew-rate limiting (the <code>tanh</code>), output limits and supply current: four numbers taken from the transistor-level simulation describe the op-amp.</p>
+
+<h3>2. Compile it</h3>
+<p>Right-click <code>opamp_va</code> &gt; <em>Run &gt; Compile Verilog-A (OpenVAF)</em>. OpenVAF writes <code>opamp_va.osdi</code> next to the source; the view <em>Compiled model (OSDI)</em> appears. Recompile after every change.</p>
+
+<h3>3. A symbol and a testbench</h3>
+<p>The model's symbol is the same triangle, with a different netlist line: the instance is an OSDI device, <code>N</code> followed by its name, its pins and its model card. Copy <code>opamp/opamp.sym</code> to <code>opamp_va/opamp_va.sym</code> (in a terminal, or <em>Terminal here</em> on the view) and replace its <code>K {...}</code> block, in a text editor, by:</p>
+<pre class="fl-nocopy"><code>K {type=primitive
+format="N@name @pinlist @model"
+template="name=1 model=opamp_va_model"
+}</code></pre>
+<p>The pin order of the symbol (INP, INN, OUT, IBIAS, VDD, VSS) must be the module's port order. The testbench <code>tb_opamp_va</code> is a copy of <code>tb_opamp_ac</code> with the model instead of the transistors. Its NGSPICE block loads the compiled model and defines the model card from design variables:</p>
+<pre class="fl-nocopy"><code>.param A0dB_mean=57.6 A0dB_sd=0
+.param GBW_mean=16.2e6 GBW_sd=0
+.param VOS_mean=1.98e-3 VOS_sd=0
+.param A0dB_mc=agauss(A0dB_mean, A0dB_sd, 1)
+.param GBW_mc=agauss(GBW_mean, GBW_sd, 1)
+.param VOS_mc=agauss(VOS_mean, VOS_sd, 1)
+.model opamp_va_model opamp_va A0dB={A0dB_mc} GBW={GBW_mc} VOS={VOS_mc} SR=10.6e6
+.control
+pre_osdi [file normalize [xschem get current_dirname]/../opamp_va/opamp_va.osdi]
+...</code></pre>
+<p>(<code>pre_osdi</code> loads the compiled model; the part in brackets is replaced by xschem with the absolute path of <code>opamp_va.osdi</code> when it writes the netlist. The <code>agauss</code> lines are for chapter 10: with the <code>_sd</code> variables at 0 they just give the mean values.)</p>
+<figure><img src="{{img}}/xschem_tb_va.png" alt="Verilog-A testbench"><figcaption>tb_opamp_va: the same open-loop testbench, with the Verilog-A model.</figcaption></figure>
+
+<h3>4. Model versus transistors</h3>
+<table>
+<tr><th></th><th>Transistors (tb_opamp_ac)</th><th>Verilog-A (tb_opamp_va)</th></tr>
+<tr><td>DC gain</td><td>57.61 dB</td><td>57.60 dB</td></tr>
+<tr><td>Unity-gain frequency</td><td>16.17 MHz</td><td>16.20 MHz</td></tr>
+<tr><td>Output offset</td><td>1.73 mV</td><td>1.71 mV</td></tr>
+<tr><td>Phase margin</td><td>60.4°</td><td><strong>89.5°</strong></td></tr>
+</table>
+<p>Gain, bandwidth and offset agree. The phase margin does not: a one-pole model always has 90°. The real op-amp has a second pole at its output (from M6's transconductance and the load) and the Miller zero. Keep this in mind: it is the subject of the exercise in chapter 11.</p>
+<div class="fl-note">Why VOS = 1.98 mV when the measured offset is 1.73 mV? The testbench measures the follower's output error, <code>v(out) − v(inp)</code>. For the model this is VOS minus the gain error of a finite-gain follower, (V<sub>CM</sub> − V<sub>DD</sub>/2)/A0 = (0.8 − 0.6)/759 = 0.26 mV. So VOS = 1.73 + 0.26 ≈ 1.98 mV reproduces the transistor-level number.</div>

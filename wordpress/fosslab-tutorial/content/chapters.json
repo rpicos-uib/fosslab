@@ -1,0 +1,86 @@
+[
+  {
+    "slug": "overview",
+    "title": "The analog design flow, with free tools",
+    "file": "00-overview.html",
+    "minutes": 10
+  },
+  {
+    "slug": "getting-started",
+    "title": "Getting started: log in and meet FOSSLab",
+    "file": "01-getting-started.html",
+    "minutes": 20
+  },
+  {
+    "slug": "schematic",
+    "title": "Schematic and symbol of the op-amp",
+    "file": "02-schematic.html",
+    "minutes": 40
+  },
+  {
+    "slug": "simulation",
+    "title": "Testbenches and simulation",
+    "file": "03-simulation.html",
+    "minutes": 45
+  },
+  {
+    "slug": "veriloga",
+    "title": "A behavioural model in Verilog-A",
+    "file": "04-veriloga.html",
+    "minutes": 30
+  },
+  {
+    "slug": "layout",
+    "title": "Layout with IHP PCells",
+    "file": "05-layout.html",
+    "minutes": 90
+  },
+  {
+    "slug": "verification",
+    "title": "DRC and LVS",
+    "file": "06-verification.html",
+    "minutes": 40
+  },
+  {
+    "slug": "postlayout",
+    "title": "Parasitic extraction and post-layout simulation",
+    "file": "07-postlayout.html",
+    "minutes": 30
+  },
+  {
+    "slug": "corners",
+    "title": "Corners: the Simulation Environment",
+    "file": "08-corners.html",
+    "minutes": 30
+  },
+  {
+    "slug": "montecarlo",
+    "title": "Monte Carlo analysis",
+    "file": "09-montecarlo.html",
+    "minutes": 30
+  },
+  {
+    "slug": "va-montecarlo",
+    "title": "Monte Carlo with the Verilog-A model",
+    "file": "10-va-montecarlo.html",
+    "minutes": 30
+  },
+  {
+    "slug": "exercise",
+    "title": "Exercise: a model with two poles",
+    "file": "11-exercise.html",
+    "minutes": 90
+  },
+  {
+    "slug": "reference",
+    "title": "Reference: menus and commands",
+    "file": "90-reference.html",
+    "minutes": 10
+  },
+  {
+    "slug": "admin",
+    "title": "For teachers: install and supervise",
+    "file": "91-admin.html",
+    "minutes": 20
+  }
+]

@@ -1,0 +1,42 @@
+<p>This tutorial takes one circuit, a two-stage CMOS operational amplifier (the classic design of Allen &amp; Holberg, <em>CMOS Analog Circuit Design</em>), through the complete analog design flow: schematic, simulation, a behavioural model, layout, verification and post-layout simulation, then process corners and Monte Carlo. Everything is done with free and open-source software and a real, public 130&nbsp;nm process: <strong>IHP SG13G2</strong>.</p>
+
+<h3>Libraries, cells and views</h3>
+<p>Designs are organised in libraries, cells and views. A <strong>library</strong> holds <strong>cells</strong> (an op-amp, a current mirror, a testbench). Each cell has several <strong>views</strong>, each one a different description of the same thing, edited with its own program:</p>
+<table>
+<tr><th>View</th><th>What it is</th><th>File</th><th>Program</th></tr>
+<tr><td>schematic</td><td>the circuit: devices and wires</td><td><code>cell.sch</code></td><td>xschem</td></tr>
+<tr><td>symbol</td><td>the box that represents the cell in a bigger schematic</td><td><code>cell.sym</code></td><td>xschem</td></tr>
+<tr><td>veriloga</td><td>a behavioural model, as equations</td><td><code>cell.va</code></td><td>text editor + OpenVAF</td></tr>
+<tr><td>layout</td><td>the drawing the factory builds from</td><td><code>cell.gds</code></td><td>KLayout</td></tr>
+<tr><td>extracted</td><td>the circuit read back from the layout (LVS)</td><td>generated</td><td>KLayout LVS</td></tr>
+<tr><td>extracted + parasitics</td><td>the same, with wire capacitances (PEX)</td><td>generated</td><td>Magic</td></tr>
+</table>
+<p>The <strong>FOSSLab Library Manager</strong> shows libraries, cells and views side by side and opens every view in the right program, already set up for the IHP process. From inside the schematic editor and the layout editor, a <em>FOSSLab</em> menu jumps to the other views of the same cell: from a schematic to its layout and back, to the whole design hierarchy, to the verification results.</p>
+
+<h3>Which program does what</h3>
+<table>
+<tr><th>Job</th><th>Program</th></tr>
+<tr><td>Design manager</td><td>FOSSLab Library Manager</td></tr>
+<tr><td>Schematic and symbol</td><td>xschem</td></tr>
+<tr><td>Simulation</td><td>ngspice, driven from xschem or FOSSLab</td></tr>
+<tr><td>Corners and Monte Carlo</td><td>FOSSLab Simulation Environment (ngspice)</td></tr>
+<tr><td>Waveforms</td><td>xschem graphs, gaw</td></tr>
+<tr><td>Behavioural model</td><td>Verilog-A compiled by OpenVAF, run by ngspice</td></tr>
+<tr><td>Layout</td><td>KLayout with IHP's PCells</td></tr>
+<tr><td>DRC, LVS</td><td>KLayout with IHP's rule decks</td></tr>
+<tr><td>Parasitic extraction</td><td>Magic</td></tr>
+<tr><td>Process</td><td>IHP SG13G2 130&nbsp;nm, open PDK</td></tr>
+</table>
+
+<h3>The flow, step by step</h3>
+<ol>
+<li><strong>Schematic capture</strong> of the op-amp, with input/output pins, and its <strong>symbol</strong>.</li>
+<li>A <strong>testbench</strong>: a separate cell that uses the op-amp's symbol, adds supplies and sources, and tells the simulator what to do. Simulate; compare with the specifications; go back to the schematic until they are met.</li>
+<li>A <strong>Verilog-A model</strong> of the op-amp, for fast system-level simulations, checked against the transistor-level circuit.</li>
+<li>The <strong>layout</strong>, with the process's parameterised cells (PCells).</li>
+<li><strong>DRC</strong> (design rule check): is it manufacturable? <strong>LVS</strong> (layout versus schematic): is it the same circuit?</li>
+<li><strong>Parasitic extraction</strong> and <strong>post-layout simulation</strong>: how much do the wires change the performance?</li>
+<li><strong>Corners</strong> and <strong>Monte Carlo</strong>: does it still work when the process, the supply and the temperature move?</li>
+</ol>
+
+<div class="fl-note">Everything runs on the course server, inside one container image (IIC-OSIC-TOOLS) that holds every program and the IHP PDK, so all students use exactly the same versions. You only need a remote-desktop client: see the next chapter.</div>

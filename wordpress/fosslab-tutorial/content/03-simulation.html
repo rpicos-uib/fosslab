@@ -1,0 +1,61 @@
+<p>A testbench is a cell of its own that uses the op-amp's symbol, adds supplies, sources and load, and tells ngspice what to do. Two testbenches check every specification.</p>
+
+<h3>1. The open-loop AC testbench</h3>
+<ol>
+<li>In the Library Manager right-click <code>opamp</code> &gt; <em>New testbench for this cell...</em>, name <code>tb_opamp_ac</code>. FOSSLab creates the cell with the op-amp's symbol placed, a label on every pin, the IHP model block and an ngspice control block.</li>
+<li>Add (<kbd>Insert</kbd>, library <code>devices</code>): <code>vsource</code> VVDD = <code>{vdd}</code>, <code>isource</code> IB = <code>{ibias}</code> from vdd into IBIAS, <code>vsource</code> VIN = <code>dc {vcm} ac 1</code> on INP, <code>capa</code> CL = <code>{cl}</code> on OUT.</li>
+<li>Close the loop <em>for DC only</em>: RFB = 1 GΩ from OUT to INN and CFB = 1 F from INN to ground. At DC the op-amp is a follower, so it finds its own operating point; at any frequency above a few mHz CFB grounds INN and we see the open-loop gain.</li>
+<li>Edit the two code blocks (<kbd>q</kbd> on them):</li>
+</ol>
+<pre class="fl-nocopy"><code>MODELS:   .lib cornerMOSlv.lib mos_tt
+          .lib cornerCAP.lib cap_typ
+
+NGSPICE:  .param vdd=1.2 vcm=0.8 ibias=10u cl=1p
+          .control
+          op
+          let vos = v(out) - v(inp)          * the follower's output offset
+          let pdiss = -v(vdd) * i(vvdd)
+          print vos
+          print pdiss
+          write tb_opamp_ac.raw
+          set appendwrite
+          ac dec 50 1 10G
+          let gain = vdb(out)
+          let phase = 180/PI*cph(out)
+          meas ac a0 find gain at=10
+          meas ac ugf when gain=0
+          meas ac phu find phase when gain=0
+          let pm = phu + 180
+          print pm
+          write tb_opamp_ac.raw
+          .endc</code></pre>
+<p>The <code>.param</code> values are the testbench's <strong>design variables</strong>: the Simulation Environment (chapter 8) can change them without editing the schematic.</p>
+<p>Add two graphs (<em>Simulation &gt; Graphs &gt; Add waveform graph</em>, then double-click the graph to edit it): node <code>gain</code> for the first; for the second <code>phase (deg);phase -1 *</code> (xschem draws the magnitude of AC vectors, so the phase, negative here, is plotted as −|phase|: <code>label;expression</code>, with the expression in reverse Polish notation). x axis logarithmic, <em>Auto load</em> ticked, and the property <code>rawfile=[fosslab_simdir]/tb_opamp_ac.raw</code>, so the graphs load this testbench's last simulation. Then <strong>Simulate</strong> (xschem's button, or the Library Manager's <em>Simulate</em>, which shows the log and the result in a window). The results go to <code>~/fosslab/sim/opamp_tut/tb_opamp_ac/</code>.</p>
+<figure><img src="{{img}}/xschem_tb_ac.png" alt="AC testbench with gain and phase"><figcaption>tb_opamp_ac after the simulation: open-loop gain and phase of the op-amp.</figcaption></figure>
+
+<h3>2. The transient testbench</h3>
+<p>Cell <code>tb_opamp_tran</code>: the op-amp as a unity-gain follower (OUT wired to INN), a 0.7 → 1.0 V pulse on INP. The control block measures the slew rate between 20 % and 80 % of the step and the settling time into a ±1 mV band:</p>
+<pre class="fl-nocopy"><code>tran 1n 4u
+meas tran t20r when v(out)=0.76 rise=1
+meas tran t80r when v(out)=0.94 rise=1
+let srp = 0.18/(t80r-t20r)
+...
+meas tran vfin find v(out) at=1.95u
+let vband = vfin - 1m
+meas tran tset_r when v(out)=$&amp;vband cross=last from=1u to=1.95u
+let tsettle = tset_r - 1u</code></pre>
+<figure><img src="{{img}}/xschem_tb_tran.png" alt="Transient testbench"><figcaption>tb_opamp_tran: the follower's output tracks the input steps, limited by the slew rate.</figcaption></figure>
+
+<h3>3. The results</h3>
+<table>
+<tr><th>Specification</th><th>Target</th><th>Simulated (typical, 27 °C)</th></tr>
+<tr><td>DC gain</td><td>≥ 55 dB</td><td>57.6 dB</td></tr>
+<tr><td>Unity-gain frequency</td><td>≥ 15 MHz</td><td>16.17 MHz</td></tr>
+<tr><td>Phase margin</td><td>≥ 55°</td><td>60.4°</td></tr>
+<tr><td>Slew rate, rising / falling</td><td>≥ 10 V/µs</td><td>10.6 / 10.3 V/µs</td></tr>
+<tr><td>Settling to 1 mV</td><td></td><td>37 ns</td></tr>
+<tr><td>Output offset (follower)</td><td>±5 mV</td><td>1.73 mV</td></tr>
+<tr><td>Power</td><td>≤ 100 µW</td><td>90.8 µW</td></tr>
+</table>
+<p>The hierarchy browser (<em>Hierarchy</em> button, or <em>FOSSLab &gt; Hierarchy browser</em> in xschem) shows the whole design: the testbench, the op-amp inside it, and its eight transistors and capacitor.</p>
+<figure><img src="{{img}}/hierarchy.png" alt="Hierarchy browser"><figcaption>The hierarchy of tb_opamp_ac. Double-click any block to open its schematic; right-click for its layout or symbol.</figcaption></figure>

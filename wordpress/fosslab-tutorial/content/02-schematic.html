@@ -1,0 +1,49 @@
+<p>We create the op-amp: a library, a cell, its schematic with IHP SG13G2 transistors, and its symbol. The circuit is the two-stage Miller op-amp of Allen &amp; Holberg, sized for SG13G2's 1.2&nbsp;V core transistors.</p>
+
+<h3>The specifications</h3>
+<table>
+<tr><th>Specification</th><th>Target</th><th>Conditions</th></tr>
+<tr><td>DC gain A0</td><td>≥ 55 dB</td><td rowspan="6">VDD = 1.2 V, CL = 1 pF, IBIAS = 10 µA, input common mode 0.8 V</td></tr>
+<tr><td>Unity-gain frequency</td><td>≥ 15 MHz</td></tr>
+<tr><td>Phase margin</td><td>≥ 55°</td></tr>
+<tr><td>Slew rate</td><td>≥ 10 V/µs</td></tr>
+<tr><td>Output offset (follower)</td><td>within ±5 mV</td></tr>
+<tr><td>Power</td><td>≤ 100 µW</td></tr>
+</table>
+
+<h3>The sizes</h3>
+<table>
+<tr><th>Device</th><th>Role</th><th>IHP cell</th><th>W (fingers × width)</th><th>L</th></tr>
+<tr><td>M1, M2</td><td>input pair</td><td>sg13_lv_nmos</td><td>8 µm (4 × 2 µm)</td><td>1 µm</td></tr>
+<tr><td>M3, M4</td><td>current mirror (load)</td><td>sg13_lv_pmos</td><td>8 µm (4 × 2 µm)</td><td>1 µm</td></tr>
+<tr><td>M5</td><td>tail current source</td><td>sg13_lv_nmos</td><td>4 µm (2 × 2 µm)</td><td>2 µm</td></tr>
+<tr><td>M8</td><td>bias (diode)</td><td>sg13_lv_nmos</td><td>4 µm (2 × 2 µm)</td><td>2 µm</td></tr>
+<tr><td>M6</td><td>second stage</td><td>sg13_lv_pmos</td><td>80 µm (40 × 2 µm)</td><td>1 µm</td></tr>
+<tr><td>M7</td><td>second-stage current source</td><td>sg13_lv_nmos</td><td>20 µm (10 × 2 µm)</td><td>2 µm</td></tr>
+<tr><td>C1 (Cc)</td><td>Miller compensation</td><td>cap_cmim</td><td colspan="2">24 µm × 24 µm (0.87 pF)</td></tr>
+</table>
+<div class="fl-note">Why (W/L)<sub>6</sub> = 10 (W/L)<sub>4</sub>? M7 carries 5 times M5's current, i.e. 10 times M4's. With M6 ten times wider than M4, M6's gate sits at the same voltage as M4's drain when both stages are balanced, so there is (to first order) no systematic offset.</div>
+
+<h3>1. A library and a cell</h3>
+<ol>
+<li>Start the Library Manager (<code>fosslab</code>).</li>
+<li><em>File &gt; New library...</em>, name <code>opamp_tut</code>. It appears under <em>Workspace</em>.</li>
+<li>Select it and <em>File &gt; New cell...</em> (or <kbd>Ctrl</kbd>+<kbd>N</kbd>): cell name <code>opamp</code>, tick <em>Schematic</em>, OK. xschem opens on the empty schematic.</li>
+</ol>
+
+<h3>2. Draw the schematic</h3>
+<ol>
+<li><kbd>Insert</kbd> opens xschem's symbol browser. From the library <code>sg13g2_pr</code> place <code>sg13_lv_nmos.sym</code> and <code>sg13_lv_pmos.sym</code> for M1 to M8, and <code>cap_cmim.sym</code> for C1.</li>
+<li>Select each device and press <kbd>q</kbd> to set its properties: <code>w</code> (total width), <code>l</code>, <code>ng</code> (number of fingers) from the table, <code>m=1</code>. For C1: <code>w=24.0e-6 l=24.0e-6</code>.</li>
+<li>From the library <code>devices</code>: <code>ipin.sym</code> for <strong>INP</strong>, <strong>INN</strong>, <strong>IBIAS</strong>, <code>opin.sym</code> for <strong>OUT</strong>, <code>iopin.sym</code> for <strong>VDD</strong> and <strong>VSS</strong> (set the name with <kbd>q</kbd>, property <code>lab</code>). These pins are the cell's interface.</li>
+<li>Connect with wires (<kbd>w</kbd>), or with net labels (<code>lab_pin.sym</code>): every label with the same name is the same net. The bulk of the NMOS goes to VSS, of the PMOS to VDD.</li>
+<li>Save (<kbd>Ctrl</kbd>+<kbd>s</kbd>).</li>
+</ol>
+<figure><img src="{{img}}/xschem_opamp.png" alt="The op-amp schematic in xschem"><figcaption>The op-amp in xschem. Each transistor shows its size; the nets are named by labels. The FOSSLab menu (top) links this schematic to its layout, its hierarchy and the verification tools.</figcaption></figure>
+
+<h3>3. The symbol</h3>
+<p>In xschem: <em>FOSSLab &gt; Create/update symbol from pins</em> (or, in the Library Manager, right-click the cell &gt; <em>Create/update symbol from schematic pins</em>). FOSSLab draws a box with the inputs on the left, the output on the right and the supplies on top and bottom. It is an ordinary xschem symbol: open it (<em>Symbol</em> button) and redraw it as the usual op-amp triangle if you like; keep the pins.</p>
+<figure><img src="{{img}}/xschem_opamp_symbol.png" alt="The op-amp symbol"><figcaption>The op-amp symbol: + and − inputs on the left, OUT on the right, IBIAS, VDD and VSS on the body.</figcaption></figure>
+<figure><img src="{{img}}/lm_opamp.png" alt="Library Manager"><figcaption>The Library Manager: library <code>opamp_tut</code>, cell <code>opamp</code> with its views. The dots show which views exist; the ticks, which checks passed.</figcaption></figure>
+
+<div class="fl-note">Stuck? Your teacher can share the reference library (<code>opamp_tut</code>, read only). Right-click any of its cells &gt; <em>Copy cell...</em> puts a copy in your own library.</div>

@@ -1,0 +1,14 @@
+<p>Two checks before any layout goes to the factory: <strong>DRC</strong> (is it manufacturable?) and <strong>LVS</strong> (is it the same circuit as the schematic?).</p>
+
+<h3>1. DRC</h3>
+<p>Save the layout, then in KLayout <em>FOSSLab &gt; Run DRC (IHP rules)</em>, or the <em>DRC</em> button of the Library Manager. A window shows the log and, at the end, the result: <em>PASS: DRC clean</em>, or the number of violations per rule. <em>Show errors in KLayout</em> opens the layout with the marker browser: click a rule, then a marker, and KLayout zooms to the error.</p>
+<figure><img src="{{img}}/flow_drc.png" alt="DRC result"><figcaption>DRC of the reference op-amp: clean. (FOSSLab runs IHP's full rule deck, without the density rules, which only make sense for a whole chip.)</figcaption></figure>
+<p>Errors you will meet: <code>M1.b</code> (two Metal1 shapes closer than 0.18 µm; often two shapes that should touch and miss by a few nm), <code>LU.a</code>/<code>LU.b</code> (a transistor too far from a substrate or well tap), <code>Cnt.*</code> and <code>V1.*</code> (contacts and vias too close to an edge of the metal around them). The reference layout went through exactly the first two before it was clean.</p>
+
+<h3>2. LVS</h3>
+<p><em>FOSSLab &gt; Run LVS</em> (KLayout or xschem) or the <em>LVS</em> button. FOSSLab netlists the schematic in LVS mode, extracts the layout with IHP's LVS deck and compares them device by device and net by net.</p>
+<figure><img src="{{img}}/flow_lvs.png" alt="LVS result"><figcaption>LVS of the reference op-amp: the netlists match.</figcaption></figure>
+<p>If they do not match, <em>Open LVS report in KLayout</em> opens the netlist browser: the circuits side by side, mismatching nets and devices in red; selecting one highlights it on the layout.</p>
+<figure><img src="{{img}}/klayout_lvs.png" alt="LVS netlist browser"><figcaption>KLayout's netlist browser on the LVS result.</figcaption></figure>
+<p>Typical causes: a missing pin label (the net gets a generated name), two nets shorted by a stray shape, a transistor whose <code>ng</code> or <code>w</code> differs from the schematic. Substrate and well taps are not compared: they are not drawn in schematics.</p>
+<p>When both are clean, the cell list shows ✔ in the DRC and LVS columns.</p>

@@ -1,0 +1,66 @@
+/* FOSSLab tutorial: scoped under .fosslab so the theme is never affected. */
+.fosslab {
+  --fl-ink: #1d232b;
+  --fl-muted: #5f6b7a;
+  --fl-line: #dde3ea;
+  --fl-soft: #f5f7fa;
+  --fl-accent: #1f5fa8;
+  --fl-code-bg: #0f1720;
+  --fl-code-ink: #e6edf3;
+  --fl-ok: #1b7f3b;
+  --fl-warn: #9a6700;
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 2rem;
+  color: var(--fl-ink);
+  line-height: 1.6;
+}
+@media (max-width: 860px) {
+  .fosslab { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+}
+.fosslab-toc { position: sticky; top: 1rem; align-self: start; font-size: .92rem; }
+@media (max-width: 860px) { .fosslab-toc { position: static; } }
+.fosslab-toc ol { margin: 0; padding-left: 1.3rem; }
+.fosslab-toc li { margin: .25rem 0; }
+.fosslab-toc li.current > a { font-weight: 700; color: var(--fl-accent); }
+.fosslab-badge {
+  display: inline-block; font-size: .7rem; padding: 0 .4rem; border-radius: 999px;
+  background: #fff4e5; color: var(--fl-warn); white-space: nowrap;
+}
+.fosslab-chapter { min-width: 0; }
+.fosslab-kicker { color: var(--fl-muted); font-size: .85rem; margin: 0; text-transform: uppercase; letter-spacing: .04em; }
+.fosslab-title { margin-top: .2rem; }
+.fosslab-draft { background: #fff4e5; border-left: 4px solid var(--fl-warn); padding: .6rem .9rem; }
+.fosslab h3 { margin-top: 2rem; }
+.fosslab table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .93rem; display: block; overflow-x: auto; }
+.fosslab th, .fosslab td { border: 1px solid var(--fl-line); padding: .4rem .6rem; text-align: left; vertical-align: top; }
+.fosslab th { background: var(--fl-soft); }
+.fosslab pre {
+  position: relative; background: var(--fl-code-bg); color: var(--fl-code-ink);
+  padding: .8rem 1rem; border-radius: 6px; overflow-x: auto; font-size: .88rem; line-height: 1.45;
+}
+.fosslab pre code { background: none; color: inherit; padding: 0; }
+.fosslab code { background: var(--fl-soft); padding: .05rem .3rem; border-radius: 3px; font-size: .92em; }
+.fosslab .fl-copy {
+  position: absolute; top: .4rem; right: .4rem; font-size: .75rem; padding: .15rem .5rem;
+  border: 1px solid #3b4652; border-radius: 4px; background: #1c2630; color: var(--fl-code-ink); cursor: pointer;
+}
+.fosslab .fl-copy:hover { background: #26323f; }
+.fosslab .fl-step {
+  border: 1px solid var(--fl-line); border-radius: 8px; padding: .8rem 1rem; margin: 1rem 0;
+}
+.fosslab .fl-step > h4 { margin: 0 0 .4rem; }
+.fosslab .fl-note { border-left: 4px solid var(--fl-accent); background: var(--fl-soft); padding: .6rem .9rem; margin: 1rem 0; }
+.fosslab .fl-ok { border-left: 4px solid var(--fl-ok); background: #eef8f1; padding: .6rem .9rem; margin: 1rem 0; }
+.fosslab kbd { border: 1px solid var(--fl-line); border-bottom-width: 2px; border-radius: 4px; padding: 0 .3rem; font-size: .85em; background: #fff; }
+.fosslab figure { margin: 1rem 0; }
+.fosslab figure img { max-width: 100%; height: auto; border: 1px solid var(--fl-line); border-radius: 6px; }
+.fosslab figcaption { color: var(--fl-muted); font-size: .88rem; }
+.fosslab-pager { display: flex; justify-content: space-between; gap: 1rem; margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--fl-line); flex-wrap: wrap; }
+.fosslab-pager .next { margin-left: auto; text-align: right; }
+@media (prefers-color-scheme: dark) {
+  .fosslab { --fl-ink: inherit; --fl-line: #3a4350; --fl-soft: rgba(255, 255, 255, .06); }
+  .fosslab-badge, .fosslab-draft { background: rgba(255, 196, 0, .12); }
+  .fosslab .fl-ok { background: rgba(27, 127, 59, .15); }
+  .fosslab kbd { background: transparent; }
+}
