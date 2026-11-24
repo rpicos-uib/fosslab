@@ -1,6 +1,7 @@
 <?php
 /**
  * Plugin Name:       FOSSLab Tutorial
+ * Plugin URI:        https://memristors.uib.es/index.php/education/fosslab/
  * Description:       The analog design flow with free tools and the IHP SG13G2 open PDK: an op-amp from schematic to post-layout simulation. Insert with [fosslab_tutorial] (all chapters, with navigation) or [fosslab_chapter slug="..."].
  * Version:           0.1.0
  * Requires at least: 5.8

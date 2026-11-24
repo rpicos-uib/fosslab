@@ -13,7 +13,7 @@ PDK_PATH = PDK_ROOT / PDK
 
 INTEGRATIONS = Path(__file__).resolve().parent / "integrations"
 
-TUTORIAL_URL = os.environ.get("FOSSLAB_TUTORIAL_URL", "")
+TUTORIAL_URL = os.environ.get("FOSSLAB_TUTORIAL_URL") or "https://memristors.uib.es/index.php/education/fosslab/"
 STUDENT_GROUP = os.environ.get("FOSSLAB_STUDENT_GROUP", "fosslab")
 WS_NAME = os.environ.get("FOSSLAB_WS_NAME", "fosslab")
 

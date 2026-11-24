@@ -7,6 +7,9 @@ layout ↔ hierarchy, runs simulation/DRC/LVS/PEX, and a supervisor mode to
 follow every student from one window. Plus the install scripts for a
 Scientific Linux 7 server and a WordPress plugin with the tutorial.
 
+**Tutorial:** https://memristors.uib.es/index.php/education/fosslab/ (an op-amp in IHP SG13G2 from schematic to
+post-layout simulation, corners and Monte Carlo, with FOSSLab).
+
 ```
 fosslab/
   runtime/fosslab-run      host wrapper: runs any tool inside the IIC-OSIC-TOOLS image
@@ -85,7 +88,7 @@ vi install/fosslab.conf
 |---|---|
 | `FOSSLAB_TEACHERS="rodrigo"` | your user name (and other teachers', space separated) |
 | `FOSSLAB_IMAGE=/opt/fosslab/images/...sif` | a disk with room if `/opt` is small, e.g. `/data/fosslab/iic-osic-tools_2026.07.sif` |
-| `FOSSLAB_TUTORIAL_URL=` | your WordPress tutorial page |
+| `FOSSLAB_TUTORIAL_URL=` | the tutorial page (default: https://memristors.uib.es/index.php/education/fosslab/) |
 | `FOSSLAB_INSTALL_X2GO=yes` | `no` if students only use `ssh -X` |
 
 ### 2. System packages and permissions (about 10 min)
@@ -219,3 +222,11 @@ takes all the tutorial's screenshots from the real programs.
 - Not tested here: the real 15 GB image under Apptainer on SL7's 3.10 kernel
   (step 30) and step 60. Run `install.sh 30 60` on the server; step 60 is
   the self-test above.
+
+## License
+
+Copyright 2026 R. Picos (Universitat de les Illes Balears).
+
+Licensed under the Apache License, Version 2.0: see [LICENSE](LICENSE).
+The tools FOSSLab runs (xschem, ngspice, KLayout, Magic, OpenVAF, ...), the
+IIC-OSIC-TOOLS image and the IHP SG13G2 PDK keep their own licenses.

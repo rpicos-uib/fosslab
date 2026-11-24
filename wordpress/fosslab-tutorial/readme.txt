@@ -14,6 +14,9 @@ A chaptered tutorial: an operational amplifier from schematic to
 post-layout simulation, corners and Monte Carlo, with xschem, ngspice,
 OpenVAF, KLayout and Magic, managed by the FOSSLab Library Manager.
 
+The tutorial online: https://memristors.uib.es/index.php/education/fosslab/
+Source: https://github.com/rpicos-uib/fosslab
+
 Shortcodes:
 * [fosslab_tutorial] all chapters with navigation (?fl=<slug> picks one)
 * [fosslab_tutorial start="simulation"] start at a chapter
