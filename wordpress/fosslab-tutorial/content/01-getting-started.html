@@ -14,16 +14,26 @@
 <h3>2. Start the Library Manager</h3>
 <p>In the XFCE menu: <em>Development &gt; FOSSLab Library Manager</em>. Or, in a terminal:</p>
 <pre><code>$ fosslab</code></pre>
-<p>The first time, it creates your <strong>workspace</strong>, the folder <code>~/fosslab</code>, with one empty library called <code>work</code>.</p>
+<p>The first time, it creates your <strong>workspace</strong>, the folder <code>~/fosslab</code>, with one empty library called <code>work</code>. The Library Manager is where everything starts: you create, find and open all your designs here, and run the checks on them. This is how it looks once you have built the op-amp of this tutorial:</p>
+<figure><img src="{{img}}/lm_tour.png" alt="The Library Manager, with numbered parts"><figcaption>The Library Manager. The numbers are explained below.</figcaption></figure>
 
-<h3>3. The window</h3>
+<h3>3. The window, part by part</h3>
 <table>
-<tr><th>Part</th><th>What it shows</th></tr>
-<tr><td>Libraries (left)</td><td>Yours under <em>Workspace</em>; the IHP PDK libraries (read only) below: <code>sg13g2_pr</code> (transistors, resistors, capacitors), <code>sg13g2_stdcell</code> (logic gates), <code>devices</code> (sources, ground, pins), <code>sg13g2_tests</code> (IHP's example testbenches).</td></tr>
-<tr><td>Cells (middle)</td><td>The cells of the selected library, with a dot for each view it has (Sch, Sym, Lay) and a tick or a cross for its last simulation, DRC, LVS and PEX.</td></tr>
-<tr><td>Views (right)</td><td>The files of the selected cell, including the results of the flows (netlists, extracted circuits).</td></tr>
+<tr><th></th><th>Part</th><th>What it is for</th></tr>
+<tr><td><span class="fl-n">1</span></td><td>Menus</td><td><em>File</em>: new library, new cell, open a terminal in the workspace. <em>Cell</em>: everything you can do with the selected cell (new view, copy, rename, delete, run a flow, see its results). <em>Tools</em>: start xschem, KLayout or Magic on their own, run the self-test. <em>Help</em>: this tutorial and a quick guide.</td></tr>
+<tr><td><span class="fl-n">2</span></td><td>Workspace</td><td>The folder that holds all your work, <code>~/fosslab</code>. Keep your designs inside it: your teacher can look at it to help you.</td></tr>
+<tr><td><span class="fl-n">3</span></td><td>Libraries</td><td>Yours under <em>Workspace</em> (here <code>work</code> and <code>opamp_tut</code>). Below, the IHP PDK libraries, greyed because they are read only: <code>sg13g2_pr</code> (transistors, resistors, capacitors), <code>sg13g2_stdcell</code> (logic gates), <code>devices</code> (sources, ground, pins), <code>sg13g2_tests</code> (IHP's example testbenches). Click a library to see its cells.</td></tr>
+<tr><td><span class="fl-n">4</span></td><td>Cells</td><td>The cells of the selected library: the circuits (<code>opamp</code>), their models (<code>opamp_va</code>) and their testbenches (<code>tb_…</code>). Type in <em>filter</em> to find one in a long list.</td></tr>
+<tr><td><span class="fl-n">5</span></td><td>Views of each cell</td><td>A dot under <em>Sch</em>, <em>Sym</em>, <em>Lay</em> when the cell has a schematic, a symbol, a layout. Here, <code>opamp</code> has all three; the testbenches only a schematic.</td></tr>
+<tr><td><span class="fl-n">6</span></td><td>Results</td><td>A tick when the last simulation, DRC, LVS or extraction (PEX) of the cell passed, a red cross when it failed, nothing if it was never run. Here, <code>opamp</code> is DRC and LVS clean and extracted, and the three testbenches were simulated.</td></tr>
+<tr><td><span class="fl-n">7</span></td><td>Views</td><td>The files of the selected cell: the ones you edit (black) and the ones the flows make from them (grey: netlists, extracted circuits). <strong>Double-click</strong> one to open it in the right program.</td></tr>
+<tr><td><span class="fl-n">8</span></td><td>Open</td><td>Open the schematic, symbol or layout of the selected cell, or browse its hierarchy (the blocks inside it).</td></tr>
+<tr><td><span class="fl-n">9</span></td><td>Run</td><td>Run a flow on the selected cell: simulate it (a testbench), check its layout (DRC), compare layout and schematic (LVS), extract the layout's parasitics (PEX). A window shows the progress and the result.</td></tr>
+<tr><td><span class="fl-n">10</span></td><td>Sim. Environment</td><td>For a testbench: set variables and outputs, then sweep corners or run Monte Carlo. Chapters 9 to 11.</td></tr>
+<tr><td><span class="fl-n">11</span></td><td>Status line</td><td>The selected cell, and a summary of its last results (here: 0 DRC violations, LVS match, 70 devices and 424 parasitic capacitors extracted). When nothing is selected, a hint.</td></tr>
 </table>
-<p><strong>Double-click</strong> a cell or a view to open it. <strong>Right-click</strong> a library, cell or view to see everything you can do with it. The buttons at the bottom act on the selected cell.</p>
+<p><strong>Right-click</strong> a library, a cell or a view to see everything you can do with it: the same as the <em>Cell</em> menu <span class="fl-n">1</span>, closer to hand. Double-clicking a cell <span class="fl-n">4</span> opens its main view (the schematic, or the layout if there is no schematic).</p>
+<div class="fl-note">Your own workspace starts with only the library <code>work</code>, empty. You will build <code>opamp_tut</code> in the next chapters, and see the dots and ticks appear one by one.</div>
 
 <h3>4. Moving between views and through the hierarchy</h3>
 <p>Inside xschem and KLayout there is a <strong>FOSSLab</strong> menu:</p>

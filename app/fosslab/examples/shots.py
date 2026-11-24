@@ -25,7 +25,7 @@ from pathlib import Path
 from PIL import Image
 
 from fosslab import simenv, flows, tools
-from fosslab.examples import opamp
+from fosslab.examples import opamp, tour
 from fosslab.gui import style
 from fosslab.gui.simenv_window import SimEnvWindow
 from fosslab.gui.app import MainWindow
@@ -209,6 +209,13 @@ root.geometry("+0+0")
 win = MainWindow(root, ws)
 root.geometry("1180x640+0+0")
 win.reveal(LIB, "opamp")
+# Getting started: the window with numbered markers, as a student sees it
+ws_text = win.ws_label.cget("text")
+win.ws_label.configure(text="~/fosslab")
+root.lift()
+pump(root, 0.8)
+save(tour.grab(win, screen), "lm_tour")
+win.ws_label.configure(text=ws_text)
 grab_tk(root, "lm_opamp", root)
 win.reveal(LIB, "tb_opamp_ac")
 grab_tk(root, "lm_tb_ac", root)

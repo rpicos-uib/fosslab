@@ -64,3 +64,5 @@
   .fosslab .fl-ok { background: rgba(27, 127, 59, .15); }
   .fosslab kbd { background: transparent; }
 }
+.fosslab .fl-n { display: inline-block; min-width: 1.5em; height: 1.5em; line-height: 1.5em; border-radius: 50%;
+  background: #d62728; color: #fff; font-weight: 700; font-size: .85rem; text-align: center; }
