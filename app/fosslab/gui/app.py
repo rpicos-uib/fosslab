@@ -104,6 +104,13 @@ class MainWindow:
         t.add_separator()
         t.add_command(label="Run self-test (all tools and flows)", command=self.selftest)
         t.add_command(label="Retake tutorial screenshots...", command=self.open_shots)
+        t.add_separator()
+        ui = tk.Menu(t)
+        t.add_cascade(label="Interface", menu=ui)
+        self.ui_var = tk.StringVar(value=style.mode())
+        for value, label in (("new", "New interface"), ("classic", "Classical interface")):
+            ui.add_radiobutton(label=label, value=value, variable=self.ui_var,
+                               command=lambda: self.set_interface(self.ui_var.get()))
 
         h = tk.Menu(mb)
         mb.add_cascade(label="Help", menu=h)
@@ -160,7 +167,7 @@ class MainWindow:
         self.cell_tree.column("#0", width=200)
         for c, t in zip(cols, ("Sch", "Sym", "Lay", "Sim", "DRC", "LVS", "PEX")):
             self.cell_tree.heading(c, text=t)
-            self.cell_tree.column(c, width=42, anchor="center", stretch=False)
+            self.cell_tree.column(c, width=style.col_width(self.root, t, 42), anchor="center", stretch=False)
         self.cell_tree.tag_configure("fail", foreground=style.FAIL)
         self.cell_tree.pack(fill="both", expand=True)
         self.cell_tree.bind("<<TreeviewSelect>>", lambda e: self.refresh_views())
@@ -602,6 +609,14 @@ class MainWindow:
             tools.open_klayout(self.ws, gds, l2n=Path(out["lvsdb"][0]))
         elif st.get("log"):
             tools.open_editor(Path(st["log"]))
+
+    def set_interface(self, m: str) -> None:
+        """Tools > Interface: switch the look of every open window, and remember it."""
+        style.save_mode(m)
+        style.apply(self.root, m)
+        for c in self.cell_tree["columns"]:
+            self.cell_tree.column(c, width=style.col_width(self.root, self.cell_tree.heading(c, "text"), 42))
+        self._info("New interface." if m == "new" else "Classical interface.")
 
     def open_shots(self) -> None:
         from .shots_window import ShotsWindow

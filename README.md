@@ -179,6 +179,9 @@ Existing accounts are just added to the `fosslab` group. Every student gets
 - Reference library for the students, read only: each student adds
   `INCLUDE /home/<you>/fosslab/fosslab.lib` to `~/fosslab/fosslab.lib`
   (your workspace must be readable by group `fosslab`).
+- Look: *Tools > Interface > New / Classical* switches every open window at
+  once and is remembered per user (`~/.config/fosslab/gui.json`);
+  `FOSSLAB_UI=new|classic` overrides it.
 
 ### If something fails
 

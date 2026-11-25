@@ -46,6 +46,7 @@ def run(out: Path, live: bool = False, echo: Echo = print) -> int:
         return 2
     out.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
+    env.setdefault("FOSSLAB_UI", "new")    # the tutorial shows the new interface
     xvfb = None
     if not live:
         n = _free_display()

@@ -40,7 +40,7 @@ class HierarchyWindow(tk.Toplevel):
         self.tree.heading("views", text="Views")
         for c, t in (("drc", "DRC"), ("lvs", "LVS"), ("pex", "PEX")):
             self.tree.heading(c, text=t)
-            self.tree.column(c, width=50, anchor="center", stretch=False)
+            self.tree.column(c, width=style.col_width(self, t, 50), anchor="center", stretch=False)
         self.tree.column("#0", width=230)
         self.tree.column("cell", width=280)
         self.tree.column("views", width=250)
