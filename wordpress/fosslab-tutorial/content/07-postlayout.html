@@ -5,6 +5,7 @@
 
 <h3>2. Simulate with the extracted view</h3>
 <p>Select the testbench <code>tb_opamp_ac</code>, right-click &gt; <em>Run &gt; Simulate with extracted views...</em> and tick <code>opamp</code>. The testbench is not changed: FOSSLab replaces the op-amp's schematic by its extracted netlist in the simulation, connecting the pins by name (the extractor orders them its own way). From the command line: <code>fosslab sim opamp_tut tb_opamp_ac --extracted opamp</code>.</p>
+<p>To use the extracted view in corners or Monte Carlo too, choose it in the Simulation Environment, tab <em>Views</em> (chapter 4): <em>Extracted (post-layout, from PEX)</em> for <code>opamp</code>. Best in a setup of its own (<em>Save as...</em>, e.g. <code>postlayout</code>), so the schematic setup stays as it is.</p>
 
 <h3>3. What the layout costs</h3>
 <table>

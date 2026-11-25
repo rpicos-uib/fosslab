@@ -1,10 +1,11 @@
 // Behavioural model of the FOSSLab tutorial op-amp (IHP SG13G2).
 // One pole, slew-rate limit, output limited near the rails.
-// Same pins as the transistor-level cell, so it can replace it.
+// A view of cell opamp, next to its schematic: same pins, so the Simulation
+// Environment (tab Views) can simulate it instead of the transistors.
 `include "constants.vams"
 `include "disciplines.vams"
 
-module opamp_va(INP, INN, OUT, IBIAS, VDD, VSS);
+module opamp(INP, INN, OUT, IBIAS, VDD, VSS);
     inout INP, INN, OUT, IBIAS, VDD, VSS;
     electrical INP, INN, OUT, IBIAS, VDD, VSS;
     electrical n1;                      // internal node: the dominant pole

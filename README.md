@@ -22,9 +22,12 @@ fosslab/
     hierarchy.py           design tree, resolving symbols like xschem does
     templates.py           new views, testbenches, GDS helpers
     tools.py               launch xschem/KLayout/Magic/editor set up for the workspace + IHP
-    flows.py               netlist, simulate (incl. extracted views), DRC, LVS, PEX, Verilog-A
-    simenv.py                 Simulation Environment: design variables,
-                           outputs with specs, corners, Monte Carlo; saved in <tb>.simenv.json
+    flows.py               netlist, simulate, DRC, LVS, PEX, Verilog-A (OpenVAF)
+    views.py               which view of each cell a testbench simulates (schematic,
+                           extracted, Verilog-A; the place to add digital views)
+    simenv.py              Simulation Environment: design variables, views,
+                           outputs with specs, corners, Monte Carlo; saved in
+                           <tb>.simenv.json (named setups: <tb>.<name>.simenv.json)
     examples/              the tutorial's op-amp: generator (opamp.py), layout script
                            with IHP PCells (opamp_layout.py), Verilog-A models
     gui/                   Library Manager, Simulation Environment, hierarchy browser,
@@ -205,8 +208,10 @@ tests/run_all.sh                  # everything, on private Xvfb displays
 `fosslab example opamp` writes the reference library `opamp_tut`: a two-stage
 Miller op-amp in IHP SG13G2 (A0 57.6 dB, UGF 16.2 MHz, PM 60.4 deg, 91 uW),
 its DRC/LVS-clean layout drawn from IHP PCells, testbenches with their
-Simulation Environment setups (15 corners, Monte Carlo) and a Verilog-A
-model (`--solution` adds the exercise's two-pole model).
+Simulation Environment setups (15 corners, Monte Carlo), and a Verilog-A
+view of the op-amp with the setup `model` of `tb_opamp_ac` that simulates it
+instead of the transistors (`--solution` adds the exercise's two-pole view
+`opamp_2pole.va` and its setup `model_2pole`).
 
 ### Retaking the tutorial's screenshots
 

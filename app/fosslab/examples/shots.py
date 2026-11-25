@@ -158,22 +158,22 @@ numbers["corners_tran"] = {r.name: r.values for r in rs_t.results}
 shutil.copy(Path(rs_t.run_dir) / "waves.png", img / "corners_tran_waves.png")
 
 print("verilog-a", flush=True)
-numbers["va_compile"] = flows.compile_va(ws, LIB, "opamp_va", echo=quiet).summary
-va = simenv.Setup.load(ws, LIB, "tb_opamp_va")
-numbers["va_nominal"] = simenv.run_nominal(ws, LIB, "tb_opamp_va", va, echo=quiet).results[0].values
+# the op-amp's Verilog-A view, simulated by the setup "model" of the same testbench
+numbers["va_compile"] = flows.compile_va(ws, LIB, "opamp", echo=quiet).summary
+va = simenv.Setup.load(ws, LIB, "tb_opamp_ac", "model")
+numbers["va_nominal"] = simenv.run_nominal(ws, LIB, "tb_opamp_ac", va, echo=quiet).results[0].values
 mc = numbers["mc"]
 va.variables.update({
     "A0dB_mean": f"{mc['a0']['mean']:.4g}", "A0dB_sd": f"{mc['a0']['std']:.3g}",
     "GBW_mean": f"{mc['ugf']['mean']:.4g}", "GBW_sd": f"{mc['ugf']['std']:.3g}",
     "VOS_mean": f"{mc['vos']['mean'] + (0.8 - 0.6) / 10 ** (mc['a0']['mean'] / 20):.3g}",
     "VOS_sd": f"{mc['vos']['std']:.3g}"})
-va.save(ws, LIB, "tb_opamp_va")
+va.save(ws, LIB, "tb_opamp_ac")
 numbers["va_vars"] = va.variables
-rs_va = simenv.run_montecarlo(ws, LIB, "tb_opamp_va", va, echo=quiet)
+rs_va = simenv.run_montecarlo(ws, LIB, "tb_opamp_ac", va, echo=quiet)
 numbers["va_mc"] = {o.name: rs_va.stats(o.name) for o in rs_va.outputs}
 for f in ("hist_vos", "hist_pm"):
     shutil.copy(Path(rs_va.run_dir) / f"{f}.png", img / f"va_mc_{f}.png")
-flows.simulate(ws, LIB, "tb_opamp_va", echo=quiet)
 (work / "results.json").write_text(json.dumps(numbers, indent=1, default=str))
 
 # --- program windows ---------------------------------------------------------------------
@@ -184,7 +184,6 @@ xschem(cd / "opamp" / "opamp.sch", "xschem_opamp")
 xschem(cd / "opamp" / "opamp.sym", "xschem_opamp_symbol")
 xschem(cd / "tb_opamp_ac" / "tb_opamp_ac.sch", "xschem_tb_ac", wait=7)
 xschem(cd / "tb_opamp_tran" / "tb_opamp_tran.sch", "xschem_tb_tran", wait=7)
-xschem(cd / "tb_opamp_va" / "tb_opamp_va.sch", "xschem_tb_va", wait=7)
 # a bigger KLayout window for the pictures, showing all hierarchy levels
 big = work / "klayout_big.py"
 big.write_text("import pya\nmw = pya.Application.instance().main_window()\nmw.resize(1400, 880)\n"
@@ -236,7 +235,7 @@ for flow in ("drc", "lvs"):
 
 a = SimEnvWindow(root, ws, LIB, "tb_opamp_ac")
 a.geometry("1180x880+0+0")
-for i, name in enumerate(("ade_variables", "ade_outputs", "ade_corners", "ade_montecarlo")):
+for i, name in enumerate(("ade_variables", "ade_views", "ade_outputs", "ade_corners", "ade_montecarlo")):
     a.nb.select(i)
     grab_tk(a, name, root)
 a.show_results(rs_c)
@@ -247,10 +246,25 @@ a.res_tree.selection_set("vos")
 grab_tk(a, "ade_mc_results", root)
 a.destroy()
 
-a = SimEnvWindow(root, ws, LIB, "tb_opamp_va")
+a = SimEnvWindow(root, ws, LIB, "tb_opamp_ac", "model")
 a.geometry("1180x880+0+0")
 a.nb.select(0)
 grab_tk(a, "ade_va_variables", root)
+a.nb.select(1)
+a.view_tree.selection_set(f"{LIB}/opamp")
+grab_tk(a, "ade_va_views", root)
+
+
+def grab_dialog():
+    from fosslab.gui.simenv_window import ViewDialog
+    d = next(w for w in a.winfo_children() if isinstance(w, ViewDialog))
+    d.geometry("+0+0")
+    grab_tk(d, "ade_va_view_dialog", root)
+    d.destroy()
+
+
+root.after(1200, grab_dialog)
+a.view_edit()          # modal: grab_dialog takes its picture and closes it
 a.show_results(rs_va)
 a.res_tree.selection_set("pm")
 grab_tk(a, "ade_va_mc_results", root)

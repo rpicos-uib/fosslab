@@ -2,17 +2,18 @@
 
 <h3>What you need</h3>
 <ul>
-<li>The model <code>opamp_va</code>, compiled, and its testbench <code>tb_opamp_va</code> (chapter 4).</li>
-<li>The transistor-level Monte Carlo of <code>tb_opamp_ac</code>, mismatch, 200 runs (chapter 9).</li>
+<li>The Verilog-A view of <code>opamp</code> and the setup <code>model</code> of <code>tb_opamp_ac</code>, which simulates it (chapter 4).</li>
+<li>The transistor-level Monte Carlo of <code>tb_opamp_ac</code> (its default setup), mismatch, 200 runs (chapter 9).</li>
 </ul>
 
 <h3>1. How the model gets random parameters</h3>
-<p>The testbench <code>tb_opamp_va</code> already prepares it. Each model parameter is drawn from a Gaussian whose mean and standard deviation are design variables:</p>
-<pre class="fl-nocopy"><code>.param A0dB_mean=57.6 A0dB_sd=0
-.param A0dB_mc=agauss(A0dB_mean, A0dB_sd, 1)
-...
-.model opamp_va_model opamp_va A0dB={A0dB_mc} GBW={GBW_mc} VOS={VOS_mc} SR=10.6e6</code></pre>
-<p><code>agauss(mean, sd, 1)</code> draws a new value every time ngspice reads the netlist, with the random seed of the run. The Simulation Environment gives every Monte Carlo run its own seed, so every run gets a different op-amp, exactly as with the transistors. With the <code>_sd</code> variables at 0 (as in chapter 4) every run is the nominal op-amp.</p>
+<p>In the Simulation Environment, tab <em>Views</em>, a model's parameters are not only numbers: they can be any expression of the design variables. To make each Monte Carlo run draw a new op-amp, give each parameter a Gaussian distribution whose mean and standard deviation are design variables:</p>
+<pre class="fl-nocopy"><code>A0dB = agauss(A0dB_mean, A0dB_sd, 1)
+GBW  = agauss(GBW_mean, GBW_sd, 1)
+VOS  = agauss(VOS_mean, VOS_sd, 1)
+SR   = 10.6e6</code></pre>
+<p><code>agauss(mean, sd, 1)</code> draws a new value every time ngspice reads the netlist, with the random seed of the run. The Simulation Environment gives every Monte Carlo run its own seed, so every run gets a different op-amp, exactly as with the transistors. With the <code>_sd</code> variables at 0 every run is the nominal op-amp.</p>
+<figure><img src="{{img}}/ade_va_view_dialog.png" alt="The model's parameters"><figcaption>Double-click the op-amp in tab <em>Views</em>: the view, and the model's parameters with their defaults and comments, read from <code>opamp.va</code>.</figcaption></figure>
 
 <h3>2. Take the statistics from the transistor-level Monte Carlo</h3>
 <p>Open the Simulation Environment of <code>tb_opamp_ac</code>, tab <em>Results</em> (after the Monte Carlo of chapter 9), and read the mean and σ of three outputs. Convert them to the model's parameters and units:</p>
@@ -27,12 +28,14 @@
 
 <h3>3. Enter them in the Simulation Environment</h3>
 <ol>
-<li>Select <code>tb_opamp_va</code> and press <em>Sim. Environment</em>.</li>
-<li>Tab <em>Design variables</em>: double-click each of the six <code>_mean</code> and <code>_sd</code> variables and type the values of the table. (<code>vdd</code>, <code>vcm</code>, <code>ibias</code>, <code>cl</code> stay.)</li>
-<li>Tab <em>Monte Carlo</em>: Number of runs 200, Starting run 1. The analysis variation only changes IHP's transistor models, and this testbench has no transistors: leave it as it is.</li>
+<li>Select <code>tb_opamp_ac</code>, press <em>Sim. Environment</em>, and choose the setup <code>model</code> in the list next to <em>Setup</em>.</li>
+<li>Tab <em>Views</em>: double-click <code>opamp_tut / opamp</code> and type the four parameters above (copy them from here). The row shows them.</li>
+<li>Tab <em>Design variables</em>: <em>Add</em> the six variables <code>A0dB_mean</code>, <code>A0dB_sd</code>, <code>GBW_mean</code>, <code>GBW_sd</code>, <code>VOS_mean</code>, <code>VOS_sd</code> with the values of the table. (<code>vdd</code>, <code>vcm</code>, <code>ibias</code>, <code>cl</code> stay.)</li>
+<li>Tab <em>Monte Carlo</em>: Number of runs 200, Starting run 1. The analysis variation only changes IHP's transistor models, and this setup has no transistors: leave it as it is.</li>
 <li><em>Run Monte Carlo</em>.</li>
 </ol>
-<figure><img src="{{img}}/ade_va_variables.png" alt="Model statistics as design variables"><figcaption>The statistics of the transistor-level Monte Carlo, entered as design variables of the model's testbench.</figcaption></figure>
+<figure><img src="{{img}}/ade_va_views.png" alt="The model's parameters in the Views tab"><figcaption>Setup <code>model</code>: the op-amp is simulated from its Verilog-A view, with random parameters.</figcaption></figure>
+<figure><img src="{{img}}/ade_va_variables.png" alt="Model statistics as design variables"><figcaption>The statistics of the transistor-level Monte Carlo, entered as design variables.</figcaption></figure>
 
 <h3>4. Compare</h3>
 <figure><img src="{{img}}/ade_va_mc_results.png" alt="Model Monte Carlo results"><figcaption>Monte Carlo with the Verilog-A model: 200 runs.</figcaption></figure>

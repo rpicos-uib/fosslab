@@ -3,11 +3,15 @@
   fosslab.lib                 library definitions
   libs/&lt;library&gt;/&lt;cell&gt;/      one folder per cell, one file per view
       &lt;cell&gt;.sch .sym .gds .va .v .spice .md
+      &lt;cell&gt;_2pole.va ...         more views of the same kind (Copy view...)
       &lt;tb&gt;.simenv.json            a testbench's Simulation Environment setup
+      &lt;tb&gt;.&lt;name&gt;.simenv.json     its other, named setups
   sim/&lt;library&gt;/&lt;cell&gt;/       simulations: netlist, .raw waveforms, logs
       corners/ montecarlo/     Simulation Environment runs: one folder per run,
                                results.csv, histograms, bar charts
+      montecarlo.&lt;name&gt;/ ...    the same, for a named setup
   verif/&lt;library&gt;/&lt;cell&gt;/    drc/  lvs/  pex/  with their reports and status
+                               va/  compiled Verilog-A models (.osdi)
 </code></pre>
 <p><code>fosslab.lib</code> accepts <code>DEFINE &lt;library&gt; &lt;folder&gt;</code> and <code>INCLUDE &lt;another fosslab.lib&gt;</code> (for instance a library your teacher shares, which you see read only).</p>
 
@@ -23,14 +27,15 @@
 <tr><td><code>fosslab hier LIB CELL</code></td><td>print the design hierarchy (<code>--gui</code> for the browser)</td></tr>
 <tr><td><code>fosslab symbol LIB CELL</code></td><td>symbol from the schematic's pins</td></tr>
 <tr><td><code>fosslab testbench LIB CELL</code></td><td>new testbench cell <code>tb_CELL</code></td></tr>
-<tr><td><code>fosslab sim LIB CELL</code></td><td>netlist and simulate (<code>--extracted c1,c2</code>: use PEX views)</td></tr>
+<tr><td><code>fosslab sim LIB CELL</code></td><td>netlist and simulate (<code>--setup NAME</code>: with that setup's views; <code>--extracted c1,c2</code>: use PEX views)</td></tr>
 <tr><td><code>fosslab drc|lvs|pex LIB CELL</code></td><td>verification (<code>--show</code>: in a window)</td></tr>
-<tr><td><code>fosslab va LIB CELL</code></td><td>compile the Verilog-A view</td></tr>
+<tr><td><code>fosslab va LIB CELL [--view NAME]</code></td><td>compile the Verilog-A view <code>CELL.va</code> (or <code>NAME.va</code>)</td></tr>
 <tr><td><code>fosslab copy SRCLIB CELL DSTLIB [NEW]</code></td><td>copy a cell (also from the PDK examples)</td></tr>
 <tr><td><code>fosslab rename LIB CELL NEW</code></td><td>rename, updating the instances in your schematics</td></tr>
-<tr><td><code>fosslab simenv LIB TB</code></td><td>the Simulation Environment of a testbench</td></tr>
-<tr><td><code>fosslab corners LIB TB</code></td><td>run its corners (saved setup), print the table</td></tr>
-<tr><td><code>fosslab mc LIB TB [-n 200] [--variation mismatch|process] [--seed 1]</code></td><td>run its Monte Carlo, print the statistics</td></tr>
+<tr><td><code>fosslab simenv LIB TB [--setup NAME]</code></td><td>the Simulation Environment of a testbench</td></tr>
+<tr><td><code>fosslab views LIB TB [--setup NAME] [--set CELL=VIEW]</code></td><td>which view of each cell the testbench simulates: <code>schematic</code>, <code>extracted</code>, <code>veriloga</code>, <code>veriloga:NAME</code></td></tr>
+<tr><td><code>fosslab corners LIB TB [--setup NAME]</code></td><td>run its corners (saved setup), print the table</td></tr>
+<tr><td><code>fosslab mc LIB TB [--setup NAME] [-n 200] [--variation mismatch|process] [--seed 1]</code></td><td>run its Monte Carlo, print the statistics</td></tr>
 <tr><td><code>fosslab example opamp [--lib NAME]</code></td><td>the tutorial's reference library, generated in your workspace</td></tr>
 <tr><td><code>fosslab status</code></td><td>last results of every cell</td></tr>
 <tr><td><code>fosslab selftest</code></td><td>check every tool and flow</td></tr>
@@ -62,6 +67,8 @@
      "temp": 125, "vars": {"vdd": "1.08"}}
   ],
   "montecarlo": {"runs": 200, "variation": "mismatch", "seed": 1, "jobs": 8},
-  "wave": "vdb(out)", "wave_logx": true
+  "wave": "vdb(out)", "wave_logx": true,
+  "views": {"opamp_tut/opamp": {"view": "veriloga",
+            "params": {"A0dB": "agauss(A0dB_mean, A0dB_sd, 1)"}}}
 }</code></pre>
-<p>What a run does with it: the testbench is netlisted once; for each corner or Monte Carlo sample FOSSLab copies the netlist and changes the IHP <code>.lib</code> sections (<code>mos_tt</code> → the corner's, or → <code>mos_tt_mismatch</code>/<code>mos_tt_stat</code> for Monte Carlo), every <code>.param</code> of a variable, the temperature and the random seed; adds the outputs' expressions and the waveform at the end of the control block; runs ngspice; and collects every <code>name = value</code> ngspice prints.</p>
+<p>What a run does with it: the testbench is netlisted once; for each corner or Monte Carlo sample FOSSLab copies the netlist and changes the IHP <code>.lib</code> sections (<code>mos_tt</code> → the corner's, or → <code>mos_tt_mismatch</code>/<code>mos_tt_stat</code> for Monte Carlo), every <code>.param</code> of a variable, the temperature and the random seed; adds the outputs' expressions and the waveform at the end of the control block; runs ngspice; and collects every <code>name = value</code> ngspice prints. With <code>views</code>, the netlist of each listed cell is first replaced by the chosen view (a wrapper subcircuit with the same pins, connected by name): the extracted netlist, or the compiled Verilog-A model loaded with <code>pre_osdi</code>, its parameters set from the expressions.</p>

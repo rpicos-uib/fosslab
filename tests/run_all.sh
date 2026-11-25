@@ -23,12 +23,12 @@ echo "== op-amp example: build, DRC, LVS, corners, Monte Carlo, Verilog-A model"
 set -e
 W=$TMP/opamp; python3 -m fosslab -w \$W init >/dev/null
 python3 -m fosslab -w \$W example opamp --solution >/dev/null
-python3 -m fosslab -w \$W drc opamp_tut opamp | grep -q 'PASS' && echo 'PASS opamp DRC'
-python3 -m fosslab -w \$W lvs opamp_tut opamp | grep -q 'PASS' && echo 'PASS opamp LVS'
+python3 -m fosslab -w \$W drc opamp_tut opamp > \$W/drc.txt; grep -q '^DRC opamp_tut/opamp: PASS' \$W/drc.txt && echo 'PASS opamp DRC'
+python3 -m fosslab -w \$W lvs opamp_tut opamp > \$W/lvs.txt; grep -q '^LVS opamp_tut/opamp: PASS' \$W/lvs.txt && echo 'PASS opamp LVS'
 python3 -m fosslab -w \$W corners opamp_tut tb_opamp_ac > \$W/c.txt && grep -q '^pm ' \$W/c.txt && echo 'PASS corners (15)'
 python3 -m fosslab -w \$W mc opamp_tut tb_opamp_ac -n 20 > \$W/m.txt && grep -q '^vos ' \$W/m.txt && echo 'PASS Monte Carlo (20 runs)'
-python3 -m fosslab -w \$W va opamp_tut opamp_va | grep -q PASS && echo 'PASS Verilog-A compile'
-python3 -m fosslab -w \$W mc opamp_tut tb_opamp_va -n 10 > \$W/v.txt && grep -q '^pm ' \$W/v.txt && echo 'PASS model Monte Carlo'
+python3 -m fosslab -w \$W va opamp_tut opamp > \$W/va.txt; grep -q '^VA opamp_tut/opamp: PASS' \$W/va.txt && echo 'PASS Verilog-A compile'
+python3 -m fosslab -w \$W mc opamp_tut tb_opamp_ac --setup model -n 10 > \$W/v.txt && grep -q '^pm ' \$W/v.txt && echo 'PASS model Monte Carlo'
 " || { echo "FAIL op-amp example"; fail=1; }
 
 echo

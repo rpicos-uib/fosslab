@@ -1,8 +1,10 @@
-"""Simulation Environment window: design variables,
-outputs with specifications, corners and Monte Carlo for one testbench.
+"""Simulation Environment window: design variables, the view simulated for
+each cell, outputs with specifications, corners and Monte Carlo for one
+testbench.
 
-Everything shown here is saved in <tb>.simenv.json next to the testbench, so
-a setup made once is there the next time (and the supervisor sees it).
+Everything shown here is saved in <tb>.simenv.json next to the testbench (or
+<tb>.<name>.simenv.json for a named setup), so a setup made once is there the
+next time (and the supervisor sees it).
 """
 
 from __future__ import annotations
@@ -12,9 +14,9 @@ import threading
 import tkinter as tk
 from dataclasses import fields
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import messagebox, simpledialog, ttk
 
-from .. import simenv, flows, tools
+from .. import simenv, flows, tools, views
 from ..workspace import Workspace
 from . import style
 
@@ -75,11 +77,86 @@ def _text_to_vars(s: str) -> dict[str, str]:
     return out
 
 
+class ViewDialog(tk.Toplevel):
+    """Choose the view of one cell, and the parameters of a Verilog-A model."""
+
+    def __init__(self, master, ws: Workspace, lib: str, cell: str, current: views.Binding):
+        super().__init__(master)
+        self.title(f"View of {lib}/{cell}")
+        self.transient(master)
+        self.ws, self.lib, self.cell = ws, lib, cell
+        self.result: views.Binding | None = None
+        self.choices = views.choices(ws, lib, cell)
+        self.params = dict(current.params)
+        self.pvars: dict[str, tk.StringVar] = {}
+        body = ttk.Frame(self, padding=12)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text="Simulate").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        self.view_var = tk.StringVar(value=dict(self.choices).get(current.view, self.choices[0][1]))
+        box = ttk.Combobox(body, textvariable=self.view_var, values=[lbl for _, lbl in self.choices],
+                           width=44, state="readonly")
+        box.grid(row=0, column=1, sticky="w")
+        box.bind("<<ComboboxSelected>>", lambda e: self._fill_params())
+        self.pframe = ttk.Frame(body, padding=(0, 10, 0, 0))
+        self.pframe.grid(row=1, column=0, columnspan=2, sticky="nsew")
+        btn = ttk.Frame(self, padding=(12, 0, 12, 12))
+        btn.pack(fill="x")
+        ttk.Button(btn, text="Cancel", command=self.destroy).pack(side="right")
+        ttk.Button(btn, text="OK", style="Accent.TButton", command=self._ok).pack(side="right", padx=6)
+        self.bind("<Escape>", lambda e: self.destroy())
+        self._fill_params()
+        self.grab_set()
+        self.wait_window()
+
+    def _view(self) -> str:
+        lbl = self.view_var.get()
+        return next((v for v, label in self.choices if label == lbl), views.SCHEMATIC)
+
+    def _fill_params(self) -> None:
+        self.params.update({k: v.get() for k, v in self.pvars.items()})
+        for w in self.pframe.winfo_children():
+            w.destroy()
+        self.pvars = {}
+        view = self._view()
+        if not view.startswith(views.VERILOGA):
+            ttk.Label(self.pframe, style="Muted.TLabel", text={
+                views.SCHEMATIC: "The cell's schematic, as drawn.",
+                views.EXTRACTED: "The netlist extracted from the layout by PEX, with its parasitic "
+                                 "capacitors: post-layout simulation."}.get(view, "")).grid(sticky="w")
+            return
+        try:
+            mod = views.read_va(views.va_path(self.ws, self.lib, self.cell, view))
+        except (OSError, ValueError) as e:
+            ttk.Label(self.pframe, text=str(e), style="Fail.TLabel").grid(sticky="w")
+            return
+        ttk.Label(self.pframe, style="Muted.TLabel", text=(
+            f"Module {mod.name}. Empty value: the model's default. Values may use the design variables "
+            "and agauss(mean, sigma, 1) / aunif(mean, delta) for Monte Carlo.")).grid(
+            row=0, column=0, columnspan=4, sticky="w", pady=(0, 6))
+        for i, h in enumerate(("Parameter", "Value", "Default", "")):
+            ttk.Label(self.pframe, text=h, style="Head.TLabel").grid(row=1, column=i, sticky="w", padx=(0, 10))
+        for r, (p, default) in enumerate(mod.params.items(), start=2):
+            ttk.Label(self.pframe, text=p).grid(row=r, column=0, sticky="w", padx=(0, 10), pady=2)
+            var = tk.StringVar(value=self.params.get(p, ""))
+            ttk.Entry(self.pframe, textvariable=var, width=34).grid(row=r, column=1, sticky="w", padx=(0, 10))
+            ttk.Label(self.pframe, text=default).grid(row=r, column=2, sticky="w", padx=(0, 10))
+            ttk.Label(self.pframe, text=mod.comments.get(p, ""), style="Muted.TLabel").grid(
+                row=r, column=3, sticky="w")
+            self.pvars[p] = var
+
+    def _ok(self) -> None:
+        view = self._view()
+        params = {k: v.get().strip() for k, v in self.pvars.items() if v.get().strip()}
+        self.result = views.Binding(view, params if view.startswith(views.VERILOGA) else {})
+        self.destroy()
+
+
 class SimEnvWindow(tk.Toplevel):
-    def __init__(self, master, ws: Workspace, lib: str, cell: str):
+    def __init__(self, master, ws: Workspace, lib: str, cell: str, setup: str = ""):
         super().__init__(master)
         self.ws, self.lib, self.cell = ws, lib, cell
-        self.setup = simenv.Setup.load(ws, lib, cell)
+        self.setup = simenv.Setup.load(ws, lib, cell, setup)
+        self.candidates: list[tuple[str, str]] = []
         self.last: simenv.RunSet | None = None
         self.q: queue.Queue = queue.Queue()
         self.busy = False
@@ -97,6 +174,12 @@ class SimEnvWindow(tk.Toplevel):
         top = ttk.Frame(self, padding=8)
         top.pack(fill="x")
         ttk.Label(top, text=f"Testbench  {self.lib} / {self.cell}", style="Banner.TLabel").pack(side="left")
+        ttk.Label(top, text="Setup:").pack(side="left", padx=(24, 4))
+        self.setup_var = tk.StringVar()
+        self.setup_box = ttk.Combobox(top, textvariable=self.setup_var, width=16, state="readonly")
+        self.setup_box.pack(side="left")
+        self.setup_box.bind("<<ComboboxSelected>>", lambda e: self.switch_setup(self._setup_name()))
+        ttk.Button(top, text="Save as...", command=self.save_as).pack(side="left", padx=6)
         for text, cmd in (("Save setup", self.save), ("Open schematic", self.open_schematic),
                           ("Run nominal", lambda: self.run("nominal"))):
             ttk.Button(top, text=text, command=cmd).pack(side="right", padx=(6, 0))
@@ -116,6 +199,21 @@ class SimEnvWindow(tk.Toplevel):
         self._buttons(f, (("Add", self.var_add), ("Edit", self.var_edit), ("Delete", self.var_del),
                           ("Read from schematic", self.var_scan)))
         self.var_tree.bind("<Double-1>", lambda e: self.var_edit())
+
+        # Views: which view of each cell to simulate
+        f = ttk.Frame(self.nb, padding=8)
+        self.nb.add(f, text="Views")
+        ttk.Label(f, style="Muted.TLabel", wraplength=1000, text=(
+            "The testbench always places each cell's symbol; here you choose what is simulated inside it: "
+            "its schematic (transistors), its extracted netlist (post-layout, after PEX) or one of its "
+            "Verilog-A models. Only cells with more than one view are listed. A model's parameters can be "
+            "numbers or expressions of the design variables, e.g. agauss(A0dB_mean, A0dB_sd, 1) for "
+            "Monte Carlo; empty: the default written in the model.")).pack(anchor="w")
+        self.view_tree = self._tree(f, ("view", "params"), ("Cell", "Simulated view", "Model parameters"),
+                                    (200, 260, 520))
+        self._buttons(f, (("Choose view...", self.view_edit), ("Open view", self.view_open),
+                          ("Back to schematic", self.view_reset), ("Refresh", self._fill_views)))
+        self.view_tree.bind("<Double-1>", lambda e: self.view_edit())
 
         # Outputs
         f = ttk.Frame(self.nb, padding=8)
@@ -253,7 +351,13 @@ class SimEnvWindow(tk.Toplevel):
     # --- filling ------------------------------------------------------------------------
 
     def _fill_all(self) -> None:
+        names = simenv.Setup.names(self.ws, self.lib, self.cell)
+        if self.setup.name not in names:
+            names.append(self.setup.name)
+        self.setup_box.configure(values=[n or "default" for n in names])
+        self.setup_var.set(self.setup.name or "default")
         self._fill_vars()
+        self._fill_views()
         self._fill_outputs()
         self._fill_corners()
         self.wave_var.set(self.setup.wave)
@@ -263,6 +367,99 @@ class SimEnvWindow(tk.Toplevel):
         self.mc_var.set(mc.variation)
         self.mc_seed.set(str(mc.seed))
         self.mc_jobs.set(str(mc.jobs))
+
+    def _fill_views(self) -> None:
+        sch = self.ws.view_path(self.lib, self.cell, "schematic")
+        if self.setup.schematic:
+            sch = self.ws.cell_dir(self.lib, self.cell) / self.setup.schematic
+        self.candidates = views.candidates(self.ws, sch)
+        bound = self.setup.bindings()
+        # cells chosen earlier but no longer below the testbench stay visible
+        keys = [views.key(lib, c) for lib, c in self.candidates] + [k for k in bound if "/" in k]
+        self.view_tree.delete(*self.view_tree.get_children())
+        for k in dict.fromkeys(keys):
+            lib, cell = k.split("/", 1)
+            b = bound.get(k, views.Binding())
+            label = dict(views.choices(self.ws, lib, cell)).get(b.view, b.view + " (missing)")
+            params = ", ".join(f"{p} = {v}" for p, v in b.params.items())
+            self.view_tree.insert("", "end", iid=k, text=f"{lib} / {cell}", values=(label, params),
+                                  tags=("changed",) if b.view != views.SCHEMATIC else ())
+        self.view_tree.tag_configure("changed", foreground=style.ACCENT)
+        if not keys:
+            self.view_tree.insert("", "end", iid="none", text="(no cell with more than one view)",
+                                  values=("", ""))
+
+    def _sel_view(self) -> str | None:
+        sel = self.view_tree.selection()
+        return sel[0] if sel and "/" in sel[0] else None
+
+    def view_edit(self) -> None:
+        k = self._sel_view()
+        if not k:
+            return
+        lib, cell = k.split("/", 1)
+        dlg = ViewDialog(self, self.ws, lib, cell, self.setup.bindings().get(k, views.Binding()))
+        if dlg.result is not None:
+            self.setup.set_binding(k, dlg.result)
+            self._fill_views()
+            self.view_tree.selection_set(k)
+
+    def view_reset(self) -> None:
+        k = self._sel_view()
+        if k:
+            self.setup.set_binding(k, views.Binding())
+            self._fill_views()
+
+    def view_open(self) -> None:
+        k = self._sel_view()
+        if not k:
+            return
+        lib, cell = k.split("/", 1)
+        b = self.setup.bindings().get(k, views.Binding())
+        if b.view.startswith(views.VERILOGA):
+            tools.open_editor(views.va_path(self.ws, lib, cell, b.view))
+        elif b.view == views.EXTRACTED:
+            tools.open_editor(views.pex_netlist(self.ws, lib, cell))
+        else:
+            tools.open_xschem(self.ws, self.ws.view_path(lib, cell, "schematic"))
+
+    def _setup_name(self) -> str:
+        n = self.setup_var.get()
+        return "" if n == "default" else n
+
+    def switch_setup(self, name: str) -> None:
+        if name == self.setup.name:
+            return
+        self.save(quiet=True)
+        try:
+            self.setup = simenv.Setup.load(self.ws, self.lib, self.cell, name)
+        except flows.FlowError as e:
+            messagebox.showerror("FOSSLab", str(e), parent=self)
+            return
+        self._fill_all()
+        self._say(f"setup '{name or 'default'}'")
+
+    def save_as(self) -> None:
+        if not self._read_mc():
+            return
+        name = simpledialog.askstring("Save setup as", "Name of the new setup (letters, digits, _ and -):",
+                                      parent=self)
+        if not name or not name.strip():
+            return
+        try:
+            name = simenv.views_name(name)
+        except ValueError as e:
+            messagebox.showerror("FOSSLab", str(e), parent=self)
+            return
+        if not name:
+            return
+        if simenv.Setup.path(self.ws, self.lib, self.cell, name).is_file() and not messagebox.askyesno(
+                "FOSSLab", f"Setup '{name}' exists. Replace it?", parent=self):
+            return
+        self.setup.name = name
+        if not self.ws.readonly:
+            self._say(f"setup saved: {self.setup.save(self.ws, self.lib, self.cell)}")
+        self._fill_all()
 
     def _fill_vars(self) -> None:
         self.var_tree.delete(*self.var_tree.get_children())

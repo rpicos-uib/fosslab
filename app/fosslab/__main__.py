@@ -177,6 +177,10 @@ def cmd_flow(ws: Workspace, args) -> int:
             kwargs["schematic"] = Path(args.file)
         if args.extracted:
             kwargs["use_extracted"] = [c for c in args.extracted.split(",") if c]
+        if args.setup:
+            kwargs["setup"] = args.setup
+    if args.flow == "va" and args.view:
+        kwargs["stem"] = args.view
     if args.show:
         from .gui.app import run_flow_window
 
@@ -191,14 +195,43 @@ def cmd_simenv(ws: Workspace, args) -> int:
     lib, cell = _target(ws, args)
     from .gui.app import run_simenv
 
-    return run_simenv(ws, lib, cell)
+    return run_simenv(ws, lib, cell, args.setup or "")
+
+
+def cmd_views(ws: Workspace, args) -> int:
+    """Show (or set) which view of each cell a testbench's setup simulates."""
+
+    from . import views
+
+    lib, cell = _target(ws, args)
+    setup = simenv.Setup.load(ws, lib, cell, args.setup or "")
+    for item in args.set or []:
+        k, _, view = item.partition("=")
+        if "/" not in k:
+            k = views.key(lib if ws.cell_dir(lib, k).is_dir() else flows._lib_of(ws, lib, k), k)
+        b = setup.bindings().get(k, views.Binding())
+        b.view = view or views.SCHEMATIC
+        setup.set_binding(k, b)
+    if args.set:
+        print(f"saved: {setup.save(ws, lib, cell)}")
+    bound = setup.bindings()
+    sch = ws.view_path(lib, cell, "schematic")
+    print(f"setup '{setup.name or 'default'}' of {lib}/{cell} (others: "
+          f"{', '.join(n for n in simenv.Setup.names(ws, lib, cell) if n) or 'none'})")
+    for cl, cc in views.candidates(ws, sch):
+        b = bound.get(views.key(cl, cc), views.Binding())
+        avail = ", ".join(v for v, _ in views.choices(ws, cl, cc))
+        print(f"  {cl}/{cc}: {b.view}   (available: {avail})")
+        for p, v in b.params.items():
+            print(f"      {p} = {v}")
+    return 0
 
 
 def cmd_sweep(ws: Workspace, args) -> int:
     """Corners or Monte Carlo from the command line, with the saved setup."""
 
     lib, cell = _target(ws, args)
-    setup = simenv.Setup.load(ws, lib, cell)
+    setup = simenv.Setup.load(ws, lib, cell, args.setup or "")
     if args.cmd == "mc":
         if args.runs:
             setup.montecarlo.runs = args.runs
@@ -402,16 +435,29 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--show", action="store_true", help="show progress and result in a window")
         if flow == "sim":
             s.add_argument("--extracted", help="cells to simulate from their PEX netlist (c1,c2)")
+            s.add_argument("--setup", help="use the views of this named setup of the testbench")
+        if flow == "va":
+            s.add_argument("--view", help="another Verilog-A view of the cell: <view>.va (default <cell>.va)")
         s.set_defaults(func=cmd_flow, flow=flow)
 
     s = sub.add_parser("simenv", help="Simulation Environment window (variables, corners, Monte Carlo)")
     _add_target(s)
+    s.add_argument("--setup", help="open this named setup")
     s.set_defaults(func=cmd_simenv)
+    s = sub.add_parser("views", help="which view of each cell a testbench simulates (schematic, "
+                                     "extracted, Verilog-A)")
+    _add_target(s)
+    s.add_argument("--setup", help="a named setup (default: the default one)")
+    s.add_argument("--set", action="append", metavar="CELL=VIEW",
+                   help="choose a view, e.g. opamp=veriloga, opamp=extracted, opamp=schematic")
+    s.set_defaults(func=cmd_views)
     s = sub.add_parser("corners", help="run the corners of a testbench's saved setup")
     _add_target(s)
+    s.add_argument("--setup", help="a named setup (default: the default one)")
     s.set_defaults(func=cmd_sweep)
     s = sub.add_parser("mc", help="run Monte Carlo with a testbench's saved setup")
     _add_target(s)
+    s.add_argument("--setup", help="a named setup (default: the default one)")
     s.add_argument("-n", "--runs", type=int)
     s.add_argument("--variation", choices=list(simenv.VARIATIONS))
     s.add_argument("--seed", type=int)

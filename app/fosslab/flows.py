@@ -174,8 +174,19 @@ def substitute_extracted(netlist_text: str, replacements: dict[str, Path], workd
 
 # --- simulation -----------------------------------------------------------------
 
+def _lib_of(ws: Workspace, tb_lib: str, cell: str) -> str:
+    """The library of a sub-cell: the testbench's own if it has it, else the first that does."""
+
+    if ws.cell_dir(tb_lib, cell).is_dir():
+        return tb_lib
+    for lib in ws.libraries():
+        if not lib.flat and (lib.path / cell).is_dir():
+            return lib.name
+    return tb_lib
+
 def simulate(ws: Workspace, lib: str, cell: str, schematic: Path | None = None,
-             use_extracted: list[str] | None = None, echo: Echo | None = None) -> FlowResult:
+             use_extracted: list[str] | None = None, echo: Echo | None = None,
+             setup: str = "") -> FlowResult:
     sch = schematic or ws.view_path(lib, cell, "schematic")
     d = _fresh(ws.sim_dir(lib, cell))
     log = d / "ngspice.log"
@@ -186,20 +197,26 @@ def simulate(ws: Workspace, lib: str, cell: str, schematic: Path | None = None,
     except FlowError as e:
         res.summary = str(e)
         return res.save()
-    if use_extracted:
-        repl = {}
-        for c in use_extracted:
-            p = ws.run_dir(lib, c, "pex") / f"{c}_pex.spice"
-            if not p.is_file():
-                res.summary = f"no extracted view for {c}: run PEX on it first"
-                return res.save()
-            repl[c] = p
+    # the testbench's hierarchy configuration (Simulation Environment, tab Views)
+    from . import simenv, views
+    if setup or simenv.Setup.path(ws, lib, cell).is_file():
+        su = simenv.Setup.load(ws, lib, cell, setup)
+    else:
+        su = simenv.Setup()
+    bindings = dict(su.bindings())
+    for c in use_extracted or []:
+        loc = next((k for k in bindings if k.split("/", 1)[1] == c), None) or views.key(_lib_of(ws, lib, c), c)
+        bindings[loc] = views.Binding(views.EXTRACTED)
+    if any(b.view != views.SCHEMATIC for b in bindings.values()):
         try:
-            net.write_text(substitute_extracted(net.read_text(), repl, d))
-        except FlowError as e:
+            text = simenv.add_missing_variables(net.read_text(), su.variables)
+            net.write_text(views.apply(ws, text, bindings, d, echo))
+        except (FlowError, ValueError, OSError) as e:
             res.summary = str(e)
             return res.save()
-        res.inputs["extracted"] = {c: str(p) for c, p in repl.items()}
+        res.inputs["views"] = {k: b.view for k, b in bindings.items() if b.view != views.SCHEMATIC}
+        res.inputs["extracted"] = {k.split("/", 1)[1]: str(views.pex_netlist(ws, *k.split("/", 1)))
+                                   for k, b in bindings.items() if b.view == views.EXTRACTED}
     before = {p: p.stat().st_mtime for p in d.glob("*.raw")}
     # IHP testbenches may .include <cell>.save (created by the IHP menu)
     (d / f"{net.stem}.save").touch(exist_ok=True)
@@ -365,23 +382,35 @@ def pex(ws: Workspace, lib: str, cell: str, cthresh: float = 0.0,
 
 # --- Verilog-A ------------------------------------------------------------------------
 
-def compile_va(ws: Workspace, lib: str, cell: str, echo: Echo | None = None) -> FlowResult:
-    va = ws.view_path(lib, cell, "veriloga")
-    d = va.parent
-    log = ws.run_root / "verif" / lib / cell / "openvaf.log"
-    log.parent.mkdir(parents=True, exist_ok=True)
+def osdi_path(ws: Workspace, lib: str, cell: str, stem: str | None = None) -> Path:
+    """Where the compiled model of a Verilog-A view goes (the run area: works
+    for read-only libraries too)."""
+
+    return ws.run_root / "verif" / lib / cell / "va" / f"{stem or cell}.osdi"
+
+
+def compile_va(ws: Workspace, lib: str, cell: str, echo: Echo | None = None,
+               stem: str | None = None) -> FlowResult:
+    """Compile the cell's Verilog-A view <cell>.va (or <stem>.va) with OpenVAF."""
+
+    stem = stem or cell
+    va = ws.cell_dir(lib, cell) / f"{stem}.va"
+    osdi = osdi_path(ws, lib, cell, stem)
+    d = osdi.parent
+    d.mkdir(parents=True, exist_ok=True)
+    log = d / f"openvaf_{stem}.log"
     log.unlink(missing_ok=True)
-    res = FlowResult("va", "error", "", str(log.parent), str(log))
+    res = FlowResult("va", "error", "", str(d), str(log), inputs={"veriloga": str(va)})
     if not va.is_file():
-        res.summary = f"{lib}/{cell} has no Verilog-A view"
+        res.summary = f"{lib}/{cell} has no Verilog-A view {va.name}"
         return res
-    osdi = d / f"{cell}.osdi"
+    osdi.unlink(missing_ok=True)
     code = run(["openvaf", str(va), "-o", str(osdi)], d, log, echo, timeout=600)
     if code == 0 and osdi.is_file():
-        res.status, res.summary = "pass", f"compiled to {osdi.name}"
+        res.status, res.summary = "pass", f"{va.name} compiled to {osdi.name}"
         res.outputs = {"osdi": str(osdi)}
     else:
-        res.status, res.summary = "fail", "OpenVAF reported errors, see the log"
+        res.status, res.summary = "fail", f"OpenVAF reported errors in {va.name}, see the log"
     return res
 
 

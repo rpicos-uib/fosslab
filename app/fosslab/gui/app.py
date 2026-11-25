@@ -534,6 +534,32 @@ class MainWindow:
         self.ws.delete_cell(lib.name, cell)
         self.refresh_cells()
 
+    def copy_view(self, v: View) -> None:
+        """Another view of the same kind in the same cell, e.g. a second
+        Verilog-A model (opamp_2pole.va next to opamp.va)."""
+
+        sel = self._need_cell()
+        if not sel:
+            return
+        lib, cell = sel
+        name = simpledialog.askstring("Copy view", f"Name of the copy of {v.path.name} (without {v.path.suffix}):",
+                                      initialvalue=f"{v.path.stem}_2", parent=self.root)
+        if not name:
+            return
+        try:
+            from ..workspace import check_name
+            name = check_name(name.strip(), "view name")
+        except ValueError as e:
+            messagebox.showerror("FOSSLab", str(e), parent=self.root)
+            return
+        dst = self.ws.cell_dir(lib, cell) / f"{name}{v.path.suffix}"
+        if dst.exists():
+            messagebox.showerror("FOSSLab", f"{dst.name} already exists.", parent=self.root)
+            return
+        dst.write_bytes(v.path.read_bytes())
+        self.refresh_views()
+        self._info(f"{lib.name}/{cell}: copied {v.path.name} to {dst.name}")
+
     def delete_view(self) -> None:
         v = self.current_view()
         lib = self.current_lib()
@@ -558,6 +584,8 @@ class MainWindow:
         v = self.current_view()
         if flow == "sim" and v and v.kind == "schematic" and v.path.stem != cell:
             kwargs.setdefault("schematic", v.path)
+        if flow == "va" and v and v.kind == "veriloga" and not v.derived:
+            kwargs.setdefault("stem", v.path.stem)      # the selected model, e.g. opamp_2pole.va
         FlowWindow(self.root, self.ws, flow, lib.name, cell,
                    on_done=lambda res: self.refresh_cells(select=cell), **kwargs)
 
@@ -730,6 +758,8 @@ class MainWindow:
         for tool in ("xschem", "klayout", "magic", "editor"):
             with_.add_command(label=tool, command=lambda t=tool: tools.open_view(self.ws, v, tool=t))
         m.add_cascade(label="Open with", menu=with_)
+        if v.kind == "veriloga" and not v.derived:
+            m.add_command(label="Compile (OpenVAF)", command=lambda: self.run_flow("va", stem=v.path.stem))
         if v.kind == "schematic":
             m.add_command(label="Hierarchy browser",
                           command=lambda: HierarchyWindow(self.root, self.ws, v.path, reveal=self.reveal))
@@ -740,6 +770,9 @@ class MainWindow:
         if not v.derived and not v.cell_in_file:
             m.add_separator()
             lib = self.current_lib()
+            if v.kind in ("schematic", "veriloga", "verilog", "spice", "notes"):
+                m.add_command(label="Copy view...", command=lambda: self.copy_view(v),
+                              state="disabled" if (lib is None or lib.readonly or self.ws.readonly) else "normal")
             m.add_command(label="Delete view", command=self.delete_view,
                           state="disabled" if (lib is None or lib.readonly or self.ws.readonly) else "normal")
         m.tk_popup(event.x_root, event.y_root)
@@ -919,12 +952,12 @@ def run_hierarchy(ws: Workspace, sch: Path) -> int:
     return 0
 
 
-def run_simenv(ws: Workspace, lib: str, cell: str) -> int:
+def run_simenv(ws: Workspace, lib: str, cell: str, setup: str = "") -> int:
     from .simenv_window import SimEnvWindow
 
     root = _root()
     root.withdraw()
-    w = SimEnvWindow(root, ws, lib, cell)
+    w = SimEnvWindow(root, ws, lib, cell, setup)
     w.protocol("WM_DELETE_WINDOW", root.destroy)
     root.mainloop()
     return 0

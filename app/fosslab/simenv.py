@@ -13,8 +13,14 @@ edited from the Simulation Environment window (gui/simenv_window.py):
         {"name": "tt_27", "enabled": true, "mos": "mos_tt", "cap": "cap_typ",
          "res": "res_typ", "temp": 27, "vars": {"vdd": "1.2"}},
         ...],
-      "montecarlo": {"runs": 200, "variation": "mismatch", "seed": 1, "jobs": 4}
+      "montecarlo": {"runs": 200, "variation": "mismatch", "seed": 1, "jobs": 4},
+      "views": {"opamp_tut/opamp": {"view": "veriloga",     # which view of each
+                "params": {"A0dB": "agauss(A0dB_mean, A0dB_sd, 1)"}}}   # cell (views.py)
     }
+
+A testbench can have several named setups (like saved states): the default one
+in ``<tb>.simenv.json`` and others in ``<tb>.<name>.simenv.json``, e.g. the
+same testbench with the op-amp's transistors and with its Verilog-A model.
 
 How a run works: the testbench is netlisted once with xschem; then, for every
 job (a corner or a Monte Carlo sample) the netlist is copied with
@@ -43,7 +49,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import flows
+from . import flows, views
 from .workspace import Workspace
 
 Echo = Callable[[str], None]
@@ -125,15 +131,28 @@ class Setup:
     # e.g. "vdb(out)" after an ac analysis. Empty: none.
     wave: str = ""
     wave_logx: bool = False
+    # which view of each cell to simulate: {"lib/cell": {"view": ..., "params": {...}}}
+    views: dict[str, dict] = field(default_factory=dict)
+    name: str = ""               # "" = the default setup (not saved in the file)
 
     @staticmethod
-    def path(ws: Workspace, lib: str, cell: str) -> Path:
-        return ws.cell_dir(lib, cell) / f"{cell}.simenv.json"
+    def path(ws: Workspace, lib: str, cell: str, name: str = "") -> Path:
+        return ws.cell_dir(lib, cell) / (f"{cell}.{name}.simenv.json" if name else f"{cell}.simenv.json")
+
+    @staticmethod
+    def names(ws: Workspace, lib: str, cell: str) -> list[str]:
+        """The testbench's setups: "" (the default) and the named ones."""
+
+        d = ws.cell_dir(lib, cell)
+        named = sorted(p.name[len(cell) + 1:-len(".simenv.json")] for p in d.glob(f"{cell}.*.simenv.json"))
+        return [""] + [n for n in named if n and "." not in n]
 
     @classmethod
-    def load(cls, ws: Workspace, lib: str, cell: str) -> "Setup":
-        p = cls.path(ws, lib, cell)
+    def load(cls, ws: Workspace, lib: str, cell: str, name: str = "") -> "Setup":
+        p = cls.path(ws, lib, cell, name)
         if not p.is_file():
+            if name:
+                raise flows.FlowError(f"{lib}/{cell} has no setup '{name}'")
             return cls.default(ws, lib, cell)
         d = json.loads(p.read_text())
         return cls(
@@ -144,7 +163,18 @@ class Setup:
             schematic=d.get("schematic", ""),
             wave=d.get("wave", ""),
             wave_logx=bool(d.get("wave_logx", False)),
+            views={k: views.Binding.from_json(v).to_json() for k, v in d.get("views", {}).items()},
+            name=name,
         )
+
+    def bindings(self) -> dict[str, views.Binding]:
+        return {k: views.Binding.from_json(v) for k, v in self.views.items()}
+
+    def set_binding(self, key: str, b: views.Binding) -> None:
+        if b.view == views.SCHEMATIC and not b.params:
+            self.views.pop(key, None)
+        else:
+            self.views[key] = b.to_json()
 
     @classmethod
     def default(cls, ws: Workspace, lib: str, cell: str) -> "Setup":
@@ -156,10 +186,23 @@ class Setup:
                      for m in MOS_SECTIONS for t in (27,)]
         return s
 
-    def save(self, ws: Workspace, lib: str, cell: str) -> Path:
-        p = self.path(ws, lib, cell)
-        p.write_text(json.dumps(asdict(self), indent=2) + "\n")
+    def save(self, ws: Workspace, lib: str, cell: str, name: str | None = None) -> Path:
+        if name is not None:
+            self.name = views_name(name)
+        p = self.path(ws, lib, cell, self.name)
+        d = asdict(self)
+        d.pop("name")
+        p.write_text(json.dumps(d, indent=2) + "\n")
         return p
+
+
+def views_name(name: str) -> str:
+    """A setup's name: letters, digits, _ and - (it goes into a file name)."""
+
+    name = name.strip()
+    if name and not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+        raise ValueError(f"setup name '{name}': use letters, digits, _ and -")
+    return name
 
 
 # --- netlist editing -------------------------------------------------------------
@@ -189,6 +232,15 @@ def set_param(text: str, name: str, value: str) -> str:
     if n:
         return new
     return _insert_before_control(text, f".param {name}={value}\n")
+
+
+def add_missing_variables(text: str, variables: dict[str, str]) -> str:
+    """Define the design variables the netlist does not define yet (``.param``)."""
+
+    for name, value in variables.items():
+        if not re.search(r"^\s*\.param\b[^\n]*?\b" + re.escape(name) + r"\s*=", text, re.I | re.M):
+            text = _insert_before_control(text, f".param {name}={value}\n")
+    return text
 
 
 def _insert_before_control(text: str, lines: str) -> str:
@@ -385,14 +437,19 @@ def base_netlist(ws: Workspace, lib: str, cell: str, setup: Setup, out_dir: Path
         sch = ws.cell_dir(lib, cell) / setup.schematic
     net = flows.netlist(ws, lib, cell, out_dir, schematic=sch, echo=echo)
     text = net.read_text(errors="replace")
+    b = setup.bindings()
+    if any(x.view != views.SCHEMATIC for x in b.values()):
+        # the variables first: the views' parameters may use them
+        text = views.apply(ws, add_missing_variables(text, setup.variables), b, out_dir, echo)
+        net.write_text(text)
     # graphs and interactive commands make no sense in batch runs
     text = re.sub(r"^\s*(plot|setplot|gnuplot|wrdata\s+/dev)\b.*$", r"* (removed by FOSSLab) \g<0>",
                   text, flags=re.M | re.I)
     return text
 
 
-def _run_dir(ws: Workspace, lib: str, cell: str, kind: str) -> Path:
-    d = ws.sim_dir(lib, cell) / kind
+def _run_dir(ws: Workspace, lib: str, cell: str, kind: str, name: str = "") -> Path:
+    d = ws.sim_dir(lib, cell) / (f"{kind}.{name}" if name else kind)
     if d.is_dir():
         shutil.rmtree(d)
     d.mkdir(parents=True)
@@ -404,7 +461,7 @@ def run_corners(ws: Workspace, lib: str, cell: str, setup: Setup | None = None,
                 jobs: int | None = None) -> RunSet:
     setup = setup or Setup.load(ws, lib, cell)
     echo = echo or (lambda s: print(s, flush=True))
-    d = _run_dir(ws, lib, cell, "corners")
+    d = _run_dir(ws, lib, cell, "corners", setup.name)
     base = base_netlist(ws, lib, cell, setup, d, echo)
     corners = [c for c in setup.corners if c.enabled]
     if not corners:
@@ -430,7 +487,7 @@ def run_montecarlo(ws: Workspace, lib: str, cell: str, setup: Setup | None = Non
     mc = setup.montecarlo
     if mc.variation not in VARIATIONS:
         raise flows.FlowError(f"unknown variation '{mc.variation}' (use {', '.join(VARIATIONS)})")
-    d = _run_dir(ws, lib, cell, "montecarlo")
+    d = _run_dir(ws, lib, cell, "montecarlo", setup.name)
     base = base_netlist(ws, lib, cell, setup, d, echo)
     corner = corner or Corner("nominal")
     echo(f"running {mc.runs} Monte Carlo samples ({mc.variation}), seeds {mc.seed}..{mc.seed + mc.runs - 1}")
@@ -451,7 +508,7 @@ def run_montecarlo(ws: Workspace, lib: str, cell: str, setup: Setup | None = Non
 def run_nominal(ws: Workspace, lib: str, cell: str, setup: Setup | None = None,
                 echo: Echo | None = None) -> RunSet:
     setup = setup or Setup.load(ws, lib, cell)
-    d = _run_dir(ws, lib, cell, "nominal")
+    d = _run_dir(ws, lib, cell, "nominal", setup.name)
     base = base_netlist(ws, lib, cell, setup, d, echo)
     res = _parallel(d, [("nominal", job_netlist(base, Corner("nominal"), setup.variables,
                                                 outputs=setup.outputs, wave=setup.wave), None)],

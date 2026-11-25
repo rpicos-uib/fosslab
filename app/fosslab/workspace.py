@@ -323,6 +323,10 @@ class Workspace:
             for f in sorted(self.cell_dir(lib, cell).glob("*.sch")):
                 if f.stem != cell:
                     views.append(View("schematic", f))
+            # more models of the same cell (e.g. opamp_2pole.va next to opamp.va)
+            for f in sorted(self.cell_dir(lib, cell).glob("*.va")):
+                if f.stem != cell:
+                    views.append(View("veriloga", f))
         views += self.derived_views(lib, cell)
         return views
 
@@ -337,9 +341,14 @@ class Workspace:
             found = [r / rel for r in self._result_roots() if (r / rel).is_file()]
             if found:
                 out.append(View(kind, max(found, key=lambda p: p.stat().st_mtime), derived=True))
-        osdi = self.cell_dir(lib, cell) / f"{cell}.osdi"
-        if osdi.is_file():
-            out.append(View("osdi", osdi, derived=True))
+        # compiled Verilog-A models (flows.osdi_path)
+        seen = set()
+        for r in self._result_roots():
+            d = r / "verif" / lib.name / cell / "va"
+            for osdi in sorted(d.glob("*.osdi")) if d.is_dir() else []:
+                if osdi.name not in seen:
+                    seen.add(osdi.name)
+                    out.append(View("osdi", osdi, derived=True))
         return out
 
     def new_cell(self, lib: str, cell: str) -> Path:

@@ -1,8 +1,8 @@
 <p>A behavioural model describes what the op-amp does with a few equations instead of eight transistors. It simulates much faster, and it is what you use when the op-amp is one block of a bigger system (a filter, an ADC). Here it will also let us run Monte Carlo without the transistors (chapter 10).</p>
 
-<h3>1. The model</h3>
-<p>Create the cell <code>opamp_va</code> with a <em>Verilog-A</em> view (<em>File &gt; New cell...</em>, tick <em>Verilog-A</em>). It opens in the text editor. The model has the same pins as the transistor-level op-amp, so it can take its place in any testbench:</p>
-<pre class="fl-nocopy"><code>module opamp_va(INP, INN, OUT, IBIAS, VDD, VSS);
+<h3>1. The model: another view of the op-amp</h3>
+<p>The model describes the same op-amp, with the same pins, so it is one more <strong>view of the cell <code>opamp</code></strong>, next to its schematic, symbol and layout. In the Library Manager, right-click <code>opamp</code> &gt; <em>New view &gt; Verilog-A</em>. FOSSLab writes <code>opamp.va</code> with a module that has the symbol's pins, and opens it in the text editor:</p>
+<pre class="fl-nocopy"><code>module opamp(INP, INN, OUT, IBIAS, VDD, VSS);
     inout INP, INN, OUT, IBIAS, VDD, VSS;
     electrical INP, INN, OUT, IBIAS, VDD, VSS;
     electrical n1;                      // internal node: the dominant pole
@@ -30,34 +30,27 @@
         I(OUT, VSS) &lt;+ (V(OUT) - vt) / ROUT;
     end
 endmodule</code></pre>
-<p>The whole file, with comments, is in the reference library (<code>opamp_tut/opamp_va/opamp_va.va</code>). One pole (r1 and c1), slew-rate limiting (the <code>tanh</code>), output limits and supply current: four numbers taken from the transistor-level simulation describe the op-amp.</p>
+<p>The whole file, with comments, is in the reference library (<code>opamp_tut/opamp/opamp.va</code>). One pole (r1 and c1), slew-rate limiting (the <code>tanh</code>), output limits and supply current: four numbers taken from the transistor-level simulation describe the op-amp.</p>
 
 <h3>2. Compile it</h3>
-<p>Right-click <code>opamp_va</code> &gt; <em>Run &gt; Compile Verilog-A (OpenVAF)</em>. OpenVAF writes <code>opamp_va.osdi</code> next to the source; the view <em>Compiled model (OSDI)</em> appears. Recompile after every change.</p>
+<p>Right-click the view <em>Verilog-A</em> &gt; <em>Compile (OpenVAF)</em>. OpenVAF turns the model into a library that ngspice loads (<code>opamp.osdi</code>); the view <em>Compiled model (OSDI)</em> appears, greyed like the other results. If OpenVAF finds an error, the window shows the line. You need not recompile after every change: a simulation that uses the model compiles it again whenever the source is newer.</p>
 
-<h3>3. A symbol and a testbench</h3>
-<p>The model's symbol is the same triangle, with a different netlist line: the instance is an OSDI device, <code>N</code> followed by its name, its pins and its model card. Copy <code>opamp/opamp.sym</code> to <code>opamp_va/opamp_va.sym</code> (in a terminal, or <em>Terminal here</em> on the view) and replace its <code>K {...}</code> block, in a text editor, by:</p>
-<pre class="fl-nocopy"><code>K {type=primitive
-format="N@name @pinlist @model"
-template="name=1 model=opamp_va_model"
-}</code></pre>
-<p>The pin order of the symbol (INP, INN, OUT, IBIAS, VDD, VSS) must be the module's port order. The testbench <code>tb_opamp_va</code> is a copy of <code>tb_opamp_ac</code> with the model instead of the transistors. Its NGSPICE block loads the compiled model and defines the model card from design variables:</p>
-<pre class="fl-nocopy"><code>.param A0dB_mean=57.6 A0dB_sd=0
-.param GBW_mean=16.2e6 GBW_sd=0
-.param VOS_mean=1.98e-3 VOS_sd=0
-.param A0dB_mc=agauss(A0dB_mean, A0dB_sd, 1)
-.param GBW_mc=agauss(GBW_mean, GBW_sd, 1)
-.param VOS_mc=agauss(VOS_mean, VOS_sd, 1)
-.model opamp_va_model opamp_va A0dB={A0dB_mc} GBW={GBW_mc} VOS={VOS_mc} SR=10.6e6
-.control
-pre_osdi [file normalize [xschem get current_dirname]/../opamp_va/opamp_va.osdi]
-...</code></pre>
-<p>(<code>pre_osdi</code> loads the compiled model; the part in brackets is replaced by xschem with the absolute path of <code>opamp_va.osdi</code> when it writes the netlist. The <code>agauss</code> lines are for chapter 10: with the <code>_sd</code> variables at 0 they just give the mean values.)</p>
-<figure><img src="{{img}}/xschem_tb_va.png" alt="Verilog-A testbench"><figcaption>tb_opamp_va: the same open-loop testbench, with the Verilog-A model.</figcaption></figure>
+<h3>3. Simulate the model instead of the transistors</h3>
+<p>No new symbol and no new testbench: <code>tb_opamp_ac</code> already places the op-amp's symbol. What is simulated inside that symbol is chosen in the Simulation Environment, tab <strong>Views</strong>, one row per cell of the testbench that has more than one view:</p>
+<figure><img src="{{img}}/ade_views.png" alt="Views tab"><figcaption>The Views tab of <code>tb_opamp_ac</code>: the op-amp is simulated from its schematic.</figcaption></figure>
+<ol>
+<li>Select <code>tb_opamp_ac</code> and press <em>Sim. Environment</em>.</li>
+<li>Keep the transistor-level setup as it is: next to <em>Setup</em>, press <em>Save as...</em> and call the new setup <code>model</code>. A testbench can have several setups (the default one, <code>model</code>, ...): the list next to <em>Setup</em> switches between them, and each keeps its own variables, views, corners and results.</li>
+<li>Tab <em>Views</em>: double-click <code>opamp_tut / opamp</code> and choose <em>Verilog-A model (opamp.va)</em>. The dialog lists the model's parameters with their defaults: leave them empty for now (chapter 10 fills them in).</li>
+<li>Tab <em>Outputs</em>: delete <code>pdiss</code> and <code>g1m</code>, which the model is not meant to reproduce. Tab <em>Corners</em>: delete the corners; they change the transistors' models, and this setup has no transistors.</li>
+<li><em>Run nominal</em>.</li>
+</ol>
+<p>The schematic is not touched. FOSSLab writes the testbench's netlist as usual and replaces the op-amp's subcircuit by one that holds the compiled model, connecting the pins by name; it is the same mechanism as post-layout simulation (chapter 7), where the view is the extracted netlist. From the command line: <code>fosslab views opamp_tut tb_opamp_ac --setup model --set opamp=veriloga</code>, then <code>fosslab sim opamp_tut tb_opamp_ac --setup model</code>.</p>
+<div class="fl-note">One cell, many views, and the testbench decides which one to simulate: this is how large designs are verified. A system can be simulated with most blocks as fast models and one block at transistor level (or extracted), and the same idea will bring digital blocks (Verilog) into the analog testbenches.</div>
 
 <h3>4. Model versus transistors</h3>
 <table>
-<tr><th></th><th>Transistors (tb_opamp_ac)</th><th>Verilog-A (tb_opamp_va)</th></tr>
+<tr><th></th><th>Transistors (setup default)</th><th>Verilog-A (setup <code>model</code>)</th></tr>
 <tr><td>DC gain</td><td>57.61 dB</td><td>57.60 dB</td></tr>
 <tr><td>Unity-gain frequency</td><td>16.17 MHz</td><td>16.20 MHz</td></tr>
 <tr><td>Output offset</td><td>1.73 mV</td><td>1.71 mV</td></tr>

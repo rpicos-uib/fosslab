@@ -5,7 +5,7 @@
 `include "constants.vams"
 `include "disciplines.vams"
 
-module opamp_va2(INP, INN, OUT, IBIAS, VDD, VSS);
+module opamp_2pole(INP, INN, OUT, IBIAS, VDD, VSS);
     inout INP, INN, OUT, IBIAS, VDD, VSS;
     electrical INP, INN, OUT, IBIAS, VDD, VSS;
     electrical n1;                      // internal node: the dominant pole

@@ -4,8 +4,9 @@
 
 writes the reference library: the op-amp (schematic, symbol, layout), its
 testbenches with their Simulation Environment setups (variables, outputs
-and specifications, corners, Monte Carlo), and the Verilog-A model with its
-own testbench. The tutorial's numbers and screenshots come from it.
+and specifications, corners, Monte Carlo), and the op-amp's Verilog-A view
+with the setup "model" of tb_opamp_ac that simulates it. The tutorial's
+numbers and screenshots come from it.
 
 Sizing (Allen & Holberg first-cut procedure, refined by simulation, VDD = 1.2 V,
 CL = 1 pF, IBIAS = 10 uA):
@@ -26,7 +27,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .. import hierarchy, xschemfile
+from .. import hierarchy, views, xschemfile
 from ..simenv import Corner, MonteCarlo, Output, Setup
 from ..workspace import Workspace
 
@@ -46,12 +47,8 @@ PINS = ["INP", "INN", "OUT", "IBIAS", "VDD", "VSS"]
 
 # --- symbol: the usual op-amp triangle --------------------------------------------
 
-def opamp_symbol(kind: str = "subcircuit") -> str:
-    if kind == "subcircuit":
-        k = 'K {type=subcircuit\nformat="@name @pinlist @symname"\ntemplate="name=x1"\n}'
-    else:   # a Verilog-A model, compiled by OpenVAF and loaded by ngspice (OSDI)
-        k = ('K {type=primitive\nformat="N@name @pinlist @model"\n'
-             'template="name=1 model=opamp_va_model"\n}')
+def opamp_symbol() -> str:
+    k = 'K {type=subcircuit\nformat="@name @pinlist @symname"\ntemplate="name=x1"\n}'
     return "\n".join([
         xschemfile.XSCHEM_VERSION_LINE, "G {}", k, "V {}", "S {}", "E {}",
         "L 4 -60 -80 -60 80 {}", "L 4 -60 -80 80 0 {}", "L 4 -60 80 80 0 {}",
@@ -169,8 +166,7 @@ def _graph(x: int, y: int, w: int, h: int, props: dict[str, str]) -> str:
 def tb_ac_schematic(paths, dut: str, tb: str, control: str = AC_CONTROL, models: str = MODELS,
                     title: str = "") -> str:
     b = xschemfile.SchematicBuilder(lambda ref: hierarchy.resolve_symbol(ref, paths))
-    b.device(dut, 600, -350, {"name": "x1"} if "opamp_va" not in dut else
-             {"name": "1", "model": "opamp_va_model"},
+    b.device(dut, 600, -350, {"name": "x1"},
              {"INP": "inp", "INN": "inn", "OUT": "out", "IBIAS": "ib", "VDD": "vdd", "VSS": "GND"})
     b.device("devices/vsource.sym", 100, -350, {"name": "VVDD", "value": "{vdd}"}, {"p": "vdd", "m": "GND"})
     b.device("devices/isource.sym", 250, -350, {"name": "IB", "value": "{ibias}"}, {"p": "vdd", "m": "ib"})
@@ -181,8 +177,7 @@ def tb_ac_schematic(paths, dut: str, tb: str, control: str = AC_CONTROL, models:
     b.device("devices/capa.sym", 400, -550, {"name": "CFB", "value": "1", "m": "1"}, {"p": "inn", "m": "GND"})
     b.code(0, 0, "MODELS", models, models=True)
     # the model card makes the MODELS block wide: keep the control block clear of it
-    b.code(1000 if "opamp_va" in dut else 300, 0, "NGSPICE", control.replace("{tb}", tb),
-           models="pre_osdi" in control)
+    b.code(300, 0, "NGSPICE", control.replace("{tb}", tb))
     b.lines.append(f"T {{{title or 'Open-loop AC: RFB-CFB close the loop for DC only'}}} 100 -700 0 0 0.4 0.4 {{}}")
     b.lines.append(_graph(1000, -700, 600, 300, {
         "y1": "-20", "y2": "70", "divy": "9", "subdivy": "1", "x1": "0", "x2": "10", "divx": "10",
@@ -218,27 +213,17 @@ def tb_tran_schematic(paths, tb: str) -> str:
     return b.text()
 
 
-# --- Verilog-A model ---------------------------------------------------------------------
+# --- Verilog-A model: a view of cell opamp ---------------------------------------------
 
 def va_source(two_poles: bool = False) -> str:
-    return (HERE / ("opamp_va2.va" if two_poles else "opamp_va.va")).read_text()
+    return (HERE / ("opamp_2pole.va" if two_poles else "opamp.va")).read_text()
 
 
-VA_MODEL_BLOCK = """
-.param A0dB_mean=57.6 A0dB_sd=0
-.param GBW_mean=16.2e6 GBW_sd=0
-.param VOS_mean=1.98e-3 VOS_sd=0
-.param A0dB_mc=agauss(A0dB_mean, A0dB_sd, 1)
-.param GBW_mc=agauss(GBW_mean, GBW_sd, 1)
-.param VOS_mc=agauss(VOS_mean, VOS_sd, 1)
-.model opamp_va_model opamp_va A0dB={A0dB_mc} GBW={GBW_mc} VOS={VOS_mc} SR=10.6e6
-"""
-
-# xschem substitutes the [...] when netlisting (the block's format is tcleval):
-# the absolute path of the compiled model, next to the testbench's library.
-VA_CONTROL = AC_CONTROL.replace(
-    ".control\n",
-    ".control\npre_osdi [file normalize [xschem get current_dirname]/../opamp_va/opamp_va.osdi]\n", 1)
+# The model's parameters in the setup "model" of tb_opamp_ac (tab Views): each
+# one drawn from a Gaussian whose mean and sigma are design variables, so a
+# Monte Carlo run draws a new op-amp each time (sigma 0: always the mean).
+VA_PARAMS = {"A0dB": "agauss(A0dB_mean, A0dB_sd, 1)", "GBW": "agauss(GBW_mean, GBW_sd, 1)",
+             "VOS": "agauss(VOS_mean, VOS_sd, 1)", "SR": "10.6e6"}
 
 
 # --- the Simulation Environment setups ----------------------------------------------------
@@ -278,7 +263,9 @@ def tran_setup() -> Setup:
     )
 
 
-def va_setup() -> Setup:
+def va_setup(lib: str = "opamp_tut") -> Setup:
+    """Setup "model" of tb_opamp_ac: the same testbench, with the op-amp's Verilog-A view."""
+
     s = ac_setup()
     s.outputs = [o for o in s.outputs if o.name not in ("pdiss", "g1m")]
     s.variables = {"vdd": "1.2", "vcm": "0.8", "ibias": "10u", "cl": "1p",
@@ -286,6 +273,7 @@ def va_setup() -> Setup:
                    "VOS_mean": "1.98e-3", "VOS_sd": "0"}
     s.corners = []
     s.montecarlo = MonteCarlo(runs=200, variation="mismatch", seed=1, jobs=8)
+    s.set_binding(views.key(lib, "opamp"), views.Binding(views.VERILOGA, dict(VA_PARAMS)))
     return s
 
 
@@ -322,17 +310,9 @@ def build(ws: Workspace, lib: str = "opamp_tut", with_layout: bool = True) -> li
     tran_setup().save(ws, lib, "tb_opamp_tran")
     done.append("testbenches tb_opamp_ac, tb_opamp_tran (with corners and Monte Carlo setups)")
 
-    d = cell("opamp_va")
-    (d / "opamp_va.va").write_text(va_source())
-    (d / "opamp_va.sym").write_text(opamp_symbol("veriloga"))
-    paths = hierarchy.search_path(ws)
-    d = cell("tb_opamp_va")
-    (d / "tb_opamp_va.sch").write_text(tb_ac_schematic(
-        paths, f"{lib}/opamp_va/opamp_va.sym", "tb_opamp_va", control=VA_CONTROL,
-        models=MODELS + VA_MODEL_BLOCK,
-        title="The Verilog-A model in the same AC testbench (Monte Carlo: set the *_sd variables)"))
-    va_setup().save(ws, lib, "tb_opamp_va")
-    done.append("opamp_va (Verilog-A model) and tb_opamp_va")
+    (library.path / "opamp" / "opamp.va").write_text(va_source())
+    va_setup(lib).save(ws, lib, "tb_opamp_ac", "model")
+    done.append("opamp: Verilog-A view; tb_opamp_ac: setup 'model' that simulates it")
 
     if with_layout:
         from . import opamp_layout
@@ -343,31 +323,19 @@ def build(ws: Workspace, lib: str = "opamp_tut", with_layout: bool = True) -> li
 
 
 def write_solution(ws: Workspace, lib: str = "opamp_tut") -> Path:
-    """The exercise's solution, for teachers: the two-pole model opamp_va2 and
-    its testbench tb_opamp_va2 (what the students are asked to build)."""
+    """The exercise's solution, for teachers: the two-pole model, a second
+    Verilog-A view of cell opamp, and the setup "model_2pole" of tb_opamp_ac
+    that simulates it (what the students are asked to build)."""
 
     library = ws.library(lib)
-    d = library.path / "opamp_va2"
-    d.mkdir(parents=True, exist_ok=True)
-    (d / "opamp_va2.va").write_text(va_source(two_poles=True))
-    (d / "opamp_va2.sym").write_text(opamp_symbol("veriloga").replace("opamp_va_model", "opamp_va2_model"))
-    tb = library.path / "tb_opamp_va2"
-    tb.mkdir(parents=True, exist_ok=True)
-    src = (library.path / "tb_opamp_va" / "tb_opamp_va.sch").read_text()
-    src = (src.replace("opamp_va/opamp_va.sym", "opamp_va2/opamp_va2.sym")
-              .replace("opamp_va/opamp_va.osdi", "opamp_va2/opamp_va2.osdi")
-              .replace("opamp_va_model opamp_va ", "opamp_va2_model opamp_va2 ")
-              .replace("model=opamp_va_model", "model=opamp_va2_model")
-              .replace("tb_opamp_va.raw", "tb_opamp_va2.raw")
-              .replace("SR=10.6e6", "SR=10.6e6 FP2=\\{FP2_mc\\}")
-              .replace(".param VOS_mc=", ".param FP2_mean=28.5e6 FP2_sd=0\n.param FP2_mc=agauss(FP2_mean, FP2_sd, 1)\n"
-                                         ".param VOS_mc="))
-    (tb / "tb_opamp_va2.sch").write_text(src)
-    s = va_setup()
+    va = library.path / "opamp" / "opamp_2pole.va"
+    va.write_text(va_source(two_poles=True))
+    s = va_setup(lib)
     # calibrated on the transistor-level Monte Carlo (chapter "Monte Carlo with the model"):
     # UGF 16.17 MHz, PM 60.38 deg -> fp2 = UGF/tan(90-PM), GBW = UGF*sqrt(1+(UGF/fp2)^2)
     s.variables.update({"A0dB_mean": "57.61", "A0dB_sd": "0.031", "GBW_mean": "18.60e6", "GBW_sd": "0.262e6",
                         "VOS_mean": "1.98e-3", "VOS_sd": "2.14e-3", "FP2_mean": "28.44e6", "FP2_sd": "0"})
-    s.save(ws, lib, "tb_opamp_va2")
-    return d
-
+    s.set_binding(views.key(lib, "opamp"), views.Binding(
+        f"{views.VERILOGA}:opamp_2pole", {**VA_PARAMS, "FP2": "agauss(FP2_mean, FP2_sd, 1)"}))
+    s.save(ws, lib, "tb_opamp_ac", "model_2pole")
+    return va
