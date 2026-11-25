@@ -1,0 +1,388 @@
+#!/bin/bash
+# fosslab-course: the server side of FOSSLab's courses.
+#
+#   fosslab-course list                      courses you can see
+#   fosslab-course show ID                   one course file
+#   sudo fosslab-course apply FILE           install a course file and make the server match it
+#   sudo fosslab-course archive ID           mark a course archived (nothing is deleted)
+#   sudo fosslab-course import-legacy        turn the single-course setup into course 'default'
+#   sudo fosslab-course system-config FILE   install FILE as /etc/fosslab.conf (old one kept)
+#
+# A course file (made by the Supervisor, Courses menu, or by hand):
+#   id micro-2026 / title ... / state active|archived / teacher USER (one or more)
+#   access rX|rwX / example none|ro|rw / library opamp_tut / tutorial URL
+#   student USER Full Name (one line per student)
+#
+# apply, as root, is safe to repeat. For course ID it:
+#   - creates the groups fl-ID (students) and fl-ID-t (its teachers) and sets
+#     their members to exactly the lists in the file;
+#   - creates a local account for each student that does not exist yet (random
+#     first password, to change at the first login; listed for the course's
+#     teachers in $PREFIX/courses/ID.passwords); existing accounts (local or
+#     LDAP) are only added to the course;
+#   - creates each student's workspace ~/fosslab-ID (course 'default': ~/fosslab)
+#     and gives the course's teachers 'access' on it (ACLs), nothing else;
+#   - removed students leave the groups and lose the teachers' access; their
+#     accounts and work are kept;
+#   - example ro: one shared copy of the tutorial's op-amp in $PREFIX/shared/ID,
+#     which the students see read only; rw: a copy in each workspace (never
+#     overwritten); the exercise's solution is never included;
+#   - installs the file as $PREFIX/courses/ID.course (readable by its teachers
+#     only) and updates the public $PREFIX/courses/index.
+# Who may apply: root; or, through sudo, a teacher of the course as it is now
+# applied (or a member of FOSSLAB_STAFF_GROUP for a new course).
+#
+# Portability: plain bash (4.2 or newer) and the standard Linux account and
+# ACL tools (useradd, gpasswd, chpasswd, chage, setfacl, getent), so it runs
+# unchanged on Scientific Linux 7 and on newer EL, Debian or Ubuntu servers.
+# Course files carry a format number; everything lives under $FOSSLAB_PREFIX,
+# so moving to a new server is: install FOSSLab, copy $PREFIX/courses and
+# $PREFIX/shared, and apply each course again.
+
+HERE=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
+# shellcheck source=lib.sh
+. "$HERE/lib.sh"
+if [ "$(id -u)" -ne 0 ]; then LOG=/dev/null; fi
+load_conf
+P=${FOSSLAB_PREFIX:-/opt/fosslab}
+CDIR=$P/courses
+SHARED=$P/shared
+WS_NAME=${FOSSLAB_WS_NAME:-fosslab}
+STAFF=${FOSSLAB_STAFF_GROUP:-fosslab-staff}
+WHO=${SUDO_USER:-$(id -un)}
+
+usage() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+
+# --- reading a course file ---------------------------------------------------------
+
+FORMAT=1          # course file format this script understands
+C_ID=; C_TITLE=; C_STATE=active; C_TEACHERS=; C_ACCESS=rX; C_EXAMPLE=none; C_LIBRARY=opamp_tut
+C_TUTORIAL=; S_USERS=(); S_NAMES=()
+
+need_tools() {
+    local t missing=
+    for t in "$@"; do command -v "$t" >/dev/null 2>&1 || missing="$missing $t"; done
+    [ -z "$missing" ] || die "missing on this server:$missing (packages: shadow-utils/passwd, acl)"
+}
+
+parse_course() {
+    local file=$1 line key rest user name n=0
+    C_ID=; C_TITLE=; C_STATE=active; C_TEACHERS=; C_ACCESS=rX; C_EXAMPLE=none; C_LIBRARY=opamp_tut
+    C_TUTORIAL=; S_USERS=(); S_NAMES=()
+    while IFS= read -r line || [ -n "$line" ]; do
+        n=$((n + 1))
+        line=${line%%#*}
+        line=${line//$'\r'/}
+        read -r key rest <<< "$line"
+        [ -n "$key" ] || continue
+        case "$key" in
+            format) [ "${rest:-1}" -le "$FORMAT" ] 2>/dev/null \
+                        || die "$file: course format $rest is newer than this fosslab-course ($FORMAT): update FOSSLab" ;;
+            id) C_ID=$rest ;;
+            title) C_TITLE=$rest ;;
+            state) C_STATE=$rest ;;
+            teacher) C_TEACHERS="$C_TEACHERS $rest" ;;
+            access) C_ACCESS=$rest ;;
+            example) C_EXAMPLE=$rest ;;
+            library) C_LIBRARY=$rest ;;
+            tutorial) C_TUTORIAL=$rest ;;
+            student)
+                read -r user name <<< "$rest"
+                S_USERS+=("$user"); S_NAMES+=("$name") ;;
+            *) die "$file line $n: unknown keyword '$key'" ;;
+        esac
+    done < "$file"
+    C_TEACHERS=$(echo $C_TEACHERS)
+}
+
+valid_user() { [[ "$1" =~ ^[a-z_][a-z0-9_.-]{0,31}$ ]]; }
+
+check_course() {
+    local u bad=0
+    [[ "$C_ID" =~ ^[a-z][a-z0-9_-]{0,23}$ ]] || { warn "course id '$C_ID': lowercase letters, digits, _ and -"; bad=1; }
+    case "$C_STATE" in active|archived) ;; *) warn "state '$C_STATE'"; bad=1 ;; esac
+    case "$C_ACCESS" in rX|rwX) ;; *) warn "access '$C_ACCESS': rX or rwX"; bad=1 ;; esac
+    case "$C_EXAMPLE" in none|ro|rw) ;; *) warn "example '$C_EXAMPLE': none, ro or rw"; bad=1 ;; esac
+    [[ "$C_LIBRARY" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || { warn "library '$C_LIBRARY'"; bad=1; }
+    [ -n "$C_TEACHERS" ] || { warn "no teacher"; bad=1; }
+    for u in $C_TEACHERS "${S_USERS[@]}"; do
+        valid_user "$u" || { warn "'$u' is not a valid user name"; bad=1; }
+    done
+    [ $bad -eq 0 ] || die "the course file has errors: nothing done"
+}
+
+in_list() { local x=$1; shift; for y in "$@"; do [ "$x" = "$y" ] && return 0; done; return 1; }
+
+course_ws() {   # course_ws ID HOME
+    if [ "$1" = default ]; then echo "$2/$WS_NAME"; else echo "$2/$WS_NAME-$1"; fi
+}
+
+teachers_of() {  # the teachers of the applied course ID
+    [ -f "$CDIR/$1.course" ] && awk '$1=="teacher"{for(i=2;i<=NF;i++) if ($i !~ /^#/) print $i; else break}' "$CDIR/$1.course"
+}
+
+students_of() {
+    [ -f "$CDIR/$1.course" ] && awk '$1=="student"{print $2}' "$CDIR/$1.course"
+}
+
+may_change() {   # may WHO change course ID?
+    [ "$WHO" = root ] && return 0
+    if [ -f "$CDIR/$1.course" ]; then
+        teachers_of "$1" | grep -qx "$WHO"
+    else
+        id -nG "$WHO" 2>/dev/null | tr ' ' '\n' | grep -qx "$STAFF"
+    fi
+}
+
+write_index() {
+    local f
+    {
+        echo "# id state access title (public: no personal data)"
+        for f in "$CDIR"/*.course; do
+            [ -f "$f" ] || continue
+            parse_course "$f"
+            echo "$C_ID $C_STATE $C_ACCESS $C_TITLE"
+        done
+    } > "$CDIR/index.new"
+    chmod 644 "$CDIR/index.new"
+    mv "$CDIR/index.new" "$CDIR/index"
+}
+
+# --- a student's workspace and the example ------------------------------------------
+
+ensure_workspace() {   # USER WS
+    local user=$1 ws=$2 grp
+    grp=$(id -gn "$user")
+    [ -d "$ws" ] || install -d -o "$user" -g "$grp" -m 750 "$ws"
+    if [ ! -f "$ws/fosslab.lib" ]; then
+        cat > "$ws/fosslab.lib" <<'EOF'
+# FOSSLab library definitions (one line per library).
+# DEFINE <library> <directory>   (relative to this file)
+# INCLUDE <another fosslab.lib>  (e.g. a library shared by the teacher)
+# The IHP SG13G2 PDK libraries are always available, read only.
+DEFINE work libs/work
+EOF
+        mkdir -p "$ws/libs/work" "$ws/sim" "$ws/verif" "$ws/.fosslab"
+        chown -R "$user:$grp" "$ws"
+    fi
+}
+
+build_shared() {   # the course's shared copy of the example library
+    local dir=$SHARED/$C_ID
+    if [ ! -d "$dir/libs/$C_LIBRARY" ]; then
+        info "building the example library $C_LIBRARY in $dir (a few minutes)"
+        mkdir -p "$dir"
+        FOSSLAB_WORKSPACE=/nonexistent run_logged "$P/bin/fosslab-run" fosslab -w "$dir" init \
+            || die "cannot create $dir"
+        FOSSLAB_WORKSPACE=/nonexistent run_logged "$P/bin/fosslab-run" fosslab -w "$dir" example opamp \
+            --lib "$C_LIBRARY" || die "could not build the example (see $LOG)"
+        sed -i '/^DEFINE work /d' "$dir/fosslab.lib"     # students see only the example
+        rm -rf "${dir:?}/libs/work"
+    fi
+    chown -R root:"fl-$C_ID" "$dir"
+    chmod -R u=rwX,g=rX,o= "$dir"
+    setfacl -R -m "g:fl-$C_ID-t:rX" "$dir"
+}
+
+give_example() {   # USER WS
+    local user=$1 ws=$2 grp inc
+    grp=$(id -gn "$user")
+    inc="INCLUDE $SHARED/$C_ID/fosslab.lib"
+    case "$C_EXAMPLE" in
+    ro)
+        if grep -q "^DEFINE $C_LIBRARY " "$ws/fosslab.lib"; then
+            warn "$user has a copy of $C_LIBRARY of their own: not adding the shared one"
+        elif ! grep -qxF "$inc" "$ws/fosslab.lib"; then
+            echo "$inc" >> "$ws/fosslab.lib"
+        fi ;;
+    rw)
+        sed -i "\\|^$inc\$|d" "$ws/fosslab.lib"
+        if [ ! -d "$ws/libs/$C_LIBRARY" ]; then
+            cp -a "$SHARED/$C_ID/libs/$C_LIBRARY" "$ws/libs/$C_LIBRARY"
+            chown -R "$user:$grp" "$ws/libs/$C_LIBRARY"
+        fi
+        grep -q "^DEFINE $C_LIBRARY " "$ws/fosslab.lib" || echo "DEFINE $C_LIBRARY libs/$C_LIBRARY" >> "$ws/fosslab.lib" ;;
+    none)
+        sed -i "\\|^$inc\$|d" "$ws/fosslab.lib" ;;
+    esac
+}
+
+grant() {   # USER HOME WS: the course's teachers get ACCESS on WS (and pass through HOME)
+    local tg="fl-$C_ID-t"
+    setfacl -m "g:$tg:x" "$2"
+    setfacl -R -m "g:$tg:$C_ACCESS" "$3"
+    find "$3" -type d -exec setfacl -d -m "g:$tg:$C_ACCESS" {} +
+}
+
+revoke() {  # ID USER: a removed student
+    local id=$1 user=$2 home ws tg="fl-$1-t"
+    home=$(getent passwd "$user" | cut -d: -f6)
+    [ -n "$home" ] || return 0
+    ws=$(course_ws "$id" "$home")
+    if [ -d "$ws" ]; then
+        setfacl -R -x "g:$tg" "$ws" 2>/dev/null
+        setfacl -R -x "d:g:$tg" "$ws" 2>/dev/null
+        [ -f "$ws/fosslab.lib" ] && sed -i "\\|^INCLUDE $SHARED/$id/fosslab.lib\$|d" "$ws/fosslab.lib"
+    fi
+    setfacl -x "g:$tg" "$home" 2>/dev/null
+    info "$user left course $id (account and work kept)"
+}
+
+# --- commands --------------------------------------------------------------------------
+
+cmd_apply() {
+    local file=$1 i u name home ws pass created=0 members tmembers old_students
+    need_root
+    [ -f "$file" ] || die "usage: sudo fosslab-course apply FILE"
+    parse_course "$file"
+    check_course
+    may_change "$C_ID" || die "$WHO may not change course $C_ID (only its teachers; a new course: group $STAFF)"
+    need_tools useradd usermod groupadd gpasswd chpasswd chage setfacl getent install
+    mkdir -p "$CDIR" "$SHARED"
+    chmod 755 "$CDIR" "$SHARED"
+    info "applying course $C_ID ($C_TITLE) for $WHO"
+    old_students=$(students_of "$C_ID")
+
+    for g in "fl-$C_ID" "fl-$C_ID-t"; do
+        getent group "$g" >/dev/null || run_logged groupadd "$g" || die "groupadd $g failed"
+    done
+    getent group "$STAFF" >/dev/null || run_logged groupadd "$STAFF"
+
+    tmembers=
+    for u in $C_TEACHERS; do
+        if id "$u" >/dev/null 2>&1; then
+            tmembers="$tmembers${tmembers:+,}$u"
+            id -nG "$u" | tr ' ' '\n' | grep -qx "$STAFF" || usermod -aG "$STAFF" "$u"
+        else
+            warn "teacher $u has no account: skipped"
+        fi
+    done
+    gpasswd -M "$tmembers" "fl-$C_ID-t" >/dev/null
+
+    # accounts first, so that the group can list them
+    members=
+    for i in "${!S_USERS[@]}"; do
+        u=${S_USERS[$i]}; name=${S_NAMES[$i]}
+        if ! id "$u" >/dev/null 2>&1; then
+            info "creating account $u${name:+ ($name)}"
+            useradd -m -c "${name:-FOSSLab student}" "$u" || { warn "useradd $u failed"; continue; }
+            pass=$(tr -dc 'A-HJ-NP-Za-km-z2-9' < /dev/urandom | head -c 10)
+            echo "$u:$pass" | chpasswd
+            chage -d 0 "$u"
+            ( umask 077; echo "$u $pass" >> "$CDIR/$C_ID.passwords" )
+            created=$((created + 1))
+        fi
+        members="$members${members:+,}$u"
+    done
+    gpasswd -M "$members" "fl-$C_ID" >/dev/null
+
+    if [ "$C_EXAMPLE" != none ]; then build_shared; fi
+
+    for u in "${S_USERS[@]}"; do
+        id "$u" >/dev/null 2>&1 || continue
+        home=$(getent passwd "$u" | cut -d: -f6)
+        [ -d "$home" ] || { warn "$u has no home directory: skipped"; continue; }
+        ws=$(course_ws "$C_ID" "$home")
+        ensure_workspace "$u" "$ws"
+        give_example "$u" "$ws"
+        grant "$u" "$home" "$ws"
+    done
+    for u in $old_students; do
+        in_list "$u" "${S_USERS[@]}" || revoke "$C_ID" "$u"
+    done
+
+    install -m 640 -o root -g "fl-$C_ID-t" "$file" "$CDIR/$C_ID.course"
+    [ -f "$CDIR/$C_ID.passwords" ] && chown root:"fl-$C_ID-t" "$CDIR/$C_ID.passwords" \
+        && chmod 640 "$CDIR/$C_ID.passwords"
+    write_index
+    info "course $C_ID applied: ${#S_USERS[@]} students ($created new accounts), teachers: $C_TEACHERS"
+    [ $created -eq 0 ] || info "first passwords: Supervisor > Courses > Students (or $CDIR/$C_ID.passwords)"
+    info "teachers and students see the change at their next start of FOSSLab (new group membership: next login)"
+}
+
+cmd_archive() {
+    local id=$1
+    need_root
+    [ -f "$CDIR/$id.course" ] || die "no course $id"
+    may_change "$id" || die "$WHO may not change course $id"
+    sed -i 's/^state .*/state    archived/' "$CDIR/$id.course"
+    grep -q '^state ' "$CDIR/$id.course" || echo "state    archived" >> "$CDIR/$id.course"
+    write_index
+    info "course $id archived (groups, accounts and work are kept; apply it again to reactivate)"
+}
+
+cmd_list() {
+    local f
+    [ -f "$CDIR/index" ] || { echo "no courses yet"; return; }
+    printf '%-20s %-9s %-5s %s\n' ID STATE ACCESS TITLE
+    while read -r id state access title; do
+        case "$id" in \#*|'') continue ;; esac
+        f=$CDIR/$id.course
+        if [ -r "$f" ]; then
+            printf '%-20s %-9s %-5s %s (%s students)\n' "$id" "$state" "$access" "$title" \
+                "$(awk '$1=="student"' "$f" | wc -l)"
+        elif [ "$(id -u)" -eq 0 ]; then
+            printf '%-20s %-9s %-5s %s\n' "$id" "$state" "$access" "$title"
+        fi
+    done < "$CDIR/index"
+}
+
+cmd_import_legacy() {
+    local tmp u members home
+    need_root
+    [ -f "$CDIR/default.course" ] && die "course 'default' already exists"
+    members=$(getent group "${FOSSLAB_STUDENT_GROUP:-fosslab}" | cut -d: -f4 | tr ',' ' ')
+    tmp=$(mktemp)
+    {
+        echo "# migrated from the single-course setup (group ${FOSSLAB_STUDENT_GROUP:-fosslab})"
+        echo "id       default"
+        echo "title    FOSSLab course"
+        echo "state    active"
+        for u in ${FOSSLAB_TEACHERS:-$WHO}; do echo "teacher  $u"; done
+        echo "access   ${FOSSLAB_ACL_MODE:-rX}"
+        echo "example  none"
+        echo "library  opamp_tut"
+        for u in $members; do
+            echo "student  $u $(getent passwd "$u" | cut -d: -f5 | cut -d, -f1)"
+        done
+    } > "$tmp"
+    WHO=root cmd_apply "$tmp"
+    rm -f "$tmp"
+    # from now on only the course's own teachers: drop the old access of the
+    # whole staff group (it came from add_students.sh)
+    for u in $members; do
+        home=$(getent passwd "$u" | cut -d: -f6)
+        [ -d "$home/$WS_NAME" ] || continue
+        setfacl -R -x "g:$STAFF" "$home/$WS_NAME" 2>/dev/null
+        setfacl -R -x "d:g:$STAFF" "$home/$WS_NAME" 2>/dev/null
+        setfacl -x "g:$STAFF" "$home" 2>/dev/null
+    done
+    info "the staff group's old access to ~/$WS_NAME was replaced by the course's teachers (fl-default-t)"
+}
+
+cmd_system_config() {
+    local new=$1 bak
+    need_root
+    [ -f "$new" ] || die "usage: sudo fosslab-course system-config FILE"
+    [ "$WHO" = root ] || id -nG "$WHO" | tr ' ' '\n' | grep -qx "$STAFF" \
+        || die "$WHO is not in $STAFF"
+    bash -n "$new" || die "$new has a syntax error: not installed"
+    if [ -f /etc/fosslab.conf ] && ! cmp -s "$new" /etc/fosslab.conf; then
+        bak=/etc/fosslab.conf.$(date +%Y%m%d-%H%M%S)
+        cp -p /etc/fosslab.conf "$bak"
+        diff -u "$bak" "$new" >&2
+        info "previous configuration kept as $bak"
+    fi
+    install -m 644 -o root -g root "$new" /etc/fosslab.conf
+    info "installed /etc/fosslab.conf: used from the next start of FOSSLab (install-only settings need their install step)"
+}
+
+case "${1:-}" in
+    list) cmd_list ;;
+    show) [ -n "${2:-}" ] || usage; cat "$CDIR/$2.course" ;;
+    apply) [ -n "${2:-}" ] || usage; cmd_apply "$(readlink -f "$2")" ;;
+    archive) [ -n "${2:-}" ] || usage; cmd_archive "$2" ;;
+    import-legacy) cmd_import_legacy ;;
+    system-config) [ -n "${2:-}" ] || usage; cmd_system_config "$(readlink -f "$2")" ;;
+    *) usage ;;
+esac

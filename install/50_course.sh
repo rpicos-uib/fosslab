@@ -22,4 +22,12 @@ members=$(getent group "$FOSSLAB_STUDENT_GROUP" | cut -d: -f4 | tr ',' ' ')
 for u in $members; do
     "$INSTALL_DIR/add_students.sh" --acl-only "$u"
 done
+# Courses: the setup above is one course; the first time, it becomes the
+# course 'default' (its students keep ~/fosslab), managed from then on in the
+# Supervisor (Courses menu) or with fosslab-course.
+if [ ! -f "$FOSSLAB_PREFIX/courses/default.course" ] && [ -n "$members" ] \
+   && [ -x "$FOSSLAB_PREFIX/install/fosslab-course" ]; then
+    info "making the current students the course 'default'"
+    "$FOSSLAB_PREFIX/install/fosslab-course" import-legacy || warn "could not create the course 'default'"
+fi
 info "step 50 done (students: ${members:-none yet; add them with add_students.sh})"

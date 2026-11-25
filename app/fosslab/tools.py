@@ -48,7 +48,7 @@ def ws_env(ws: Workspace) -> dict[str, str]:
     which workspace they belong to."""
 
     return {"FOSSLAB_WORKSPACE": str(ws.root), "FOSSLAB_RUN_ROOT": str(ws.run_root),
-            "FOSSLAB_FROM_TOOL": "1"}
+            "FOSSLAB_FROM_TOOL": "1", "FOSSLAB_WORKSPACE_SET": "1"}
 
 
 def ensure_user_xschemrc(ws: Workspace) -> None:

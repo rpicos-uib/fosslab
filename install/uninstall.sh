@@ -10,7 +10,9 @@ need_root
 load_conf
 
 P=${FOSSLAB_PREFIX:?}
-for d in runtime libexec app share bin; do rm -rf "${P:?}/$d"; done
+for d in runtime libexec app share bin install; do rm -rf "${P:?}/$d"; done
+# $P/courses and $P/shared (the courses, their students' lists and shared
+# libraries) are kept even with --all: remove them by hand if you mean it.
 rm -f /etc/profile.d/fosslab.sh /etc/profile.d/fosslab.csh \
       /usr/share/applications/fosslab.desktop /usr/share/applications/fosslab-supervisor.desktop \
       /usr/share/applications/fosslab-shell.desktop

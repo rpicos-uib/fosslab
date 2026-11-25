@@ -9,7 +9,7 @@ load_conf
 P=$FOSSLAB_PREFIX
 info "installing FOSSLab into $P"
 mkdir -p "$P"
-for d in runtime libexec app share; do
+for d in runtime libexec app share install; do
     rm -rf "${P:?}/$d.new"
     cp -a "$SRC_DIR/$d" "$P/$d.new"
     rm -rf "${P:?}/$d"
@@ -23,8 +23,12 @@ openvaf iverilog vvp gtkwave yosys librelane openroad qucs-s xyce gaw kpex"
 for t in $TOOLS_LIST; do
     ln -sfn ../runtime/fosslab-run "$P/bin/$t"
 done
-chmod 755 "$P/runtime/fosslab-run" "$P"/libexec/*
-chmod -R a+rX "$P"
+ln -sfn ../install/fosslab-course "$P/bin/fosslab-course"      # runs on the host, not in the image
+chmod 755 "$P/runtime/fosslab-run" "$P"/libexec/* "$P/install/fosslab-course"
+chmod -R a+rX "$P/runtime" "$P/libexec" "$P/app" "$P/share" "$P/install" "$P/bin"
+# courses (their files are readable by their teachers only: never chmod -R them)
+mkdir -p "$P/courses" "$P/shared"
+chmod 755 "$P" "$P/courses" "$P/shared"
 
 # System configuration (an existing one is kept: it may have local edits).
 if [ ! -f /etc/fosslab.conf ]; then

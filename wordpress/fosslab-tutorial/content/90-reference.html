@@ -1,5 +1,6 @@
 <h3>Workspace layout</h3>
-<pre class="fl-nocopy"><code>~/fosslab/
+<p>Your workspace is <code>~/fosslab-&lt;course&gt;</code> for each course you are in (<em>File &gt; Course</em> switches), or <code>~/fosslab</code>:</p>
+<pre class="fl-nocopy"><code>~/fosslab-&lt;course&gt;/
   fosslab.lib                 library definitions
   libs/&lt;library&gt;/&lt;cell&gt;/      one folder per cell, one file per view
       &lt;cell&gt;.sch .sym .gds .va .v .spice .md
@@ -37,6 +38,9 @@
 <tr><td><code>fosslab corners LIB TB [--setup NAME]</code></td><td>run its corners (saved setup), print the table</td></tr>
 <tr><td><code>fosslab mc LIB TB [--setup NAME] [-n 200] [--variation mismatch|process] [--seed 1]</code></td><td>run its Monte Carlo, print the statistics</td></tr>
 <tr><td><code>fosslab example opamp [--lib NAME]</code></td><td>the tutorial's reference library, generated in your workspace</td></tr>
+<tr><td><code>fosslab-course list</code>, <code>show ID</code></td><td>(teachers, on the server) your courses; one course's file</td></tr>
+<tr><td><code>sudo fosslab-course apply FILE</code></td><td>(teachers) make the server match a course: groups, accounts, workspaces, access, example library</td></tr>
+<tr><td><code>sudo fosslab-course archive ID</code>, <code>system-config FILE</code></td><td>(teachers) archive a course; install a new <code>/etc/fosslab.conf</code></td></tr>
 <tr><td><code>fosslab status</code></td><td>last results of every cell</td></tr>
 <tr><td><code>fosslab selftest</code></td><td>check every tool and flow</td></tr>
 </table>

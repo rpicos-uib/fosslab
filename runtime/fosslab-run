@@ -27,6 +27,8 @@ fi
 : "${FOSSLAB_IMAGE:=$FOSSLAB_PREFIX/images/iic-osic-tools.sif}"
 : "${FOSSLAB_PODMAN_IMAGE:=docker.io/hpretl/iic-osic-tools:latest}"
 : "${FOSSLAB_BINDS:=/home}"                          # extra host dirs visible in the container
+# a workspace the user chose explicitly wins over the course's
+[ -n "${FOSSLAB_WORKSPACE:-}" ] && export FOSSLAB_WORKSPACE_SET=1
 : "${FOSSLAB_WORKSPACE:=$HOME/fosslab}"
 : "${FOSSLAB_STUDENT_GROUP:=fosslab}"
 : "${FOSSLAB_STAFF_GROUP:=fosslab-staff}"
@@ -48,44 +50,85 @@ die() { echo "fosslab-run: $*" >&2; exit 1; }
 
 # --- host-side work that must happen outside the container -----------------
 
-# Supervisor: hand the roster (students and their homes) to the container,
-# which cannot see the host's full group database.
+COURSES_DIR=$FOSSLAB_PREFIX/courses
+
+# Supervisor: hand the roster to the container, which cannot see the host's
+# full user and group database: "course/user:home" for every student of the
+# courses this teacher teaches (their course files are readable only by them).
+# Without courses: the single-course setup's group, as "user:home".
 if [ "$TOOL" = "fosslab-supervisor" ]; then
-    members=$(getent group "$FOSSLAB_STUDENT_GROUP" | cut -d: -f4)
     roster=""
-    IFS=',' read -r -a _users <<< "$members"
-    for u in "${_users[@]}"; do
-        [ -n "$u" ] || continue
-        h=$(getent passwd "$u" | cut -d: -f6)
-        [ -n "$h" ] || continue
-        roster="$roster${roster:+;}$u:$h"
+    for f in "$COURSES_DIR"/*.course; do
+        [ -r "$f" ] || continue
+        cid=$(basename "$f" .course)
+        for u in $(awk '$1=="student"{print $2}' "$f"); do
+            h=$(getent passwd "$u" | cut -d: -f6)
+            [ -n "$h" ] && roster="$roster${roster:+;}$cid/$u:$h"
+        done
     done
+    if [ -z "$roster" ] && [ ! -f "$COURSES_DIR/index" ]; then
+        members=$(getent group "$FOSSLAB_STUDENT_GROUP" | cut -d: -f4)
+        IFS=',' read -r -a _users <<< "$members"
+        for u in "${_users[@]}"; do
+            [ -n "$u" ] || continue
+            h=$(getent passwd "$u" | cut -d: -f6)
+            [ -n "$h" ] || continue
+            roster="$roster${roster:+;}$u:$h"
+        done
+    fi
     export FOSSLAB_ROSTER="$roster"
+    # the system configuration, for Courses > Edit system configuration
+    [ -r "$CONF" ] && export FOSSLAB_CONF_TEXT="$(base64 < "$CONF" | tr -d '\n')" FOSSLAB_CONF_PATH="$CONF"
     [ -n "$FOSSLAB_DEBUG" ] && echo "fosslab-run: roster: $roster" >&2
 fi
 
-# Student: keep the supervisor's read access on everything in the workspace.
-# Cheap: only files newer than the last fix are touched.
-if [ "$TOOL" = "fosslab" ] && [ -d "$FOSSLAB_WORKSPACE" ] && [ -O "$FOSSLAB_WORKSPACE" ] \
-   && command -v setfacl >/dev/null 2>&1 && getent group "$FOSSLAB_STAFF_GROUP" >/dev/null 2>&1; then
-    stamp="$FOSSLAB_WORKSPACE/.fosslab/acl.stamp"
-    mkdir -p "$FOSSLAB_WORKSPACE/.fosslab"
+# Student: the active courses they are in ("id;id"), from their groups fl-<id>.
+mygroups=" $(id -Gn 2>/dev/null) "
+courses=""
+if [ -r "$COURSES_DIR/index" ]; then
+    while read -r cid cstate caccess _title; do
+        case "$cid" in \#*|'') continue ;; esac
+        [ "$cstate" = active ] || continue
+        case "$mygroups" in *" fl-$cid "*) courses="$courses${courses:+;}$cid" ;; esac
+    done < "$COURSES_DIR/index"
+fi
+export FOSSLAB_COURSES="$courses"
+
+# Keep the teachers' access on everything in the student's workspaces (new
+# files made inside the container may miss the default ACL). Cheap: only
+# files newer than the last fix are touched.
+fix_acl() {   # WORKSPACE GROUP MODE
+    local ws=$1 grp=$2 mode=$3 stamp=$1/.fosslab/acl.stamp
+    [ -d "$ws" ] && [ -O "$ws" ] || return 0
+    command -v setfacl >/dev/null 2>&1 && getent group "$grp" >/dev/null 2>&1 || return 0
+    mkdir -p "$ws/.fosslab"
     if [ -f "$stamp" ]; then
-        find "$FOSSLAB_WORKSPACE" -newer "$stamp" -print0 2>/dev/null \
-            | xargs -0 -r setfacl -m "g:$FOSSLAB_STAFF_GROUP:$FOSSLAB_ACL_MODE" 2>/dev/null || true
+        find "$ws" -newer "$stamp" -print0 2>/dev/null \
+            | xargs -0 -r setfacl -m "g:$grp:$mode" 2>/dev/null || true
     else
-        setfacl -R -m "g:$FOSSLAB_STAFF_GROUP:$FOSSLAB_ACL_MODE" "$FOSSLAB_WORKSPACE" 2>/dev/null || true
-        find "$FOSSLAB_WORKSPACE" -type d -print0 \
-            | xargs -0 -r setfacl -d -m "g:$FOSSLAB_STAFF_GROUP:$FOSSLAB_ACL_MODE" 2>/dev/null || true
+        setfacl -R -m "g:$grp:$mode" "$ws" 2>/dev/null || true
+        find "$ws" -type d -print0 | xargs -0 -r setfacl -d -m "g:$grp:$mode" 2>/dev/null || true
     fi
     touch "$stamp"
+}
+if [ "$TOOL" = "fosslab" ]; then
+    if [ -r "$COURSES_DIR/index" ]; then
+        while read -r cid cstate caccess _title; do
+            case ";$courses;" in *";$cid;"*) ;; *) continue ;; esac
+            if [ "$cid" = default ]; then ws=$HOME/$FOSSLAB_WS_NAME; else ws=$HOME/$FOSSLAB_WS_NAME-$cid; fi
+            fix_acl "$ws" "fl-$cid-t" "$caccess"
+        done < "$COURSES_DIR/index"
+    else
+        fix_acl "$FOSSLAB_WORKSPACE" "$FOSSLAB_STAFF_GROUP" "$FOSSLAB_ACL_MODE"   # single-course setup
+    fi
 fi
 
 # --- variables passed into the container ------------------------------------
 
 PASS_VARS="DISPLAY XAUTHORITY TERM LANG USER LOGNAME FOSSLAB_PREFIX FOSSLAB_WORKSPACE
 FOSSLAB_ROSTER FOSSLAB_STUDENT_GROUP FOSSLAB_STAFF_GROUP FOSSLAB_WS_NAME FOSSLAB_EDITOR
-FOSSLAB_TUTORIAL_URL FOSSLAB_DEBUG"
+FOSSLAB_TUTORIAL_URL FOSSLAB_DEBUG FOSSLAB_COURSES FOSSLAB_CONF_TEXT FOSSLAB_CONF_PATH
+FOSSLAB_WORKSPACE_SET"
 
 [ -n "$XAUTHORITY" ] || { [ -f "$HOME/.Xauthority" ] && export XAUTHORITY="$HOME/.Xauthority"; }
 export FOSSLAB_PREFIX FOSSLAB_WORKSPACE FOSSLAB_STUDENT_GROUP FOSSLAB_STAFF_GROUP FOSSLAB_WS_NAME

@@ -22,6 +22,11 @@ from .hierarchy_window import HierarchyWindow
 MY_WS = "— my workspace —"
 
 
+def _course_index() -> list[dict]:
+    from ..course import public_index
+    return public_index()
+
+
 def _short(p: Path) -> str:
     """A path for display: ~ for the home directory, and never too long."""
 
@@ -39,6 +44,10 @@ class MainWindow:
         self.ws = ws
         self.supervisor = supervisor
         self.student = ""
+        # supervisor: the course whose students are listed ("" = single-course setup)
+        rc = config.roster_courses()
+        self.course = (config.prefs().get("supervisor_course") if config.prefs().get("supervisor_course") in rc
+                       else (rc[0] if rc else ""))
         self.libs: dict[str, Library] = {}
         self.cell_rows: dict[str, str] = {}
         self.view_rows: dict[str, View] = {}
@@ -83,6 +92,15 @@ class MainWindow:
         f.add_command(label="Edit library definitions (fosslab.lib)",
                       command=lambda: tools.open_editor(self.ws.lib_file))
         f.add_command(label="Refresh", command=self.refresh_all, accelerator="F5")
+        if config.courses() and not self.supervisor:
+            # a student's courses: each has its own workspace (~/fosslab-<course>)
+            cm = tk.Menu(f)
+            f.add_cascade(label="Course", menu=cm)
+            self.my_course = tk.StringVar(value=config.current_course() or "")
+            titles = {c["id"]: c["title"] for c in _course_index()}
+            for cid in config.courses():
+                cm.add_radiobutton(label=f"{cid}  ({titles.get(cid, cid)})", value=cid, variable=self.my_course,
+                                   command=lambda: self.switch_my_course(self.my_course.get()))
         f.add_separator()
         f.add_command(label="Quit", command=self.quit, accelerator="Ctrl+Q")
         self.root.bind("<Control-q>", lambda e: self.quit())
@@ -112,6 +130,10 @@ class MainWindow:
             ui.add_radiobutton(label=label, value=value, variable=self.ui_var,
                                command=lambda: self.set_interface(self.ui_var.get()))
 
+        if self.supervisor:
+            from .courses import CoursesMenu
+            CoursesMenu(self, mb)
+
         h = tk.Menu(mb)
         mb.add_cascade(label="Help", menu=h)
         if config.TUTORIAL_URL:
@@ -128,12 +150,17 @@ class MainWindow:
         if self.supervisor:
             ttk.Button(top, text="Roster...", command=self.open_roster).pack(side="right")
             self.student_var = tk.StringVar(value=MY_WS)
-            names = [MY_WS] + [u for u, _ in config.roster()]
-            cb = ttk.Combobox(top, textvariable=self.student_var, values=names, width=22,
-                              state="readonly")
-            cb.pack(side="right", padx=6)
-            cb.bind("<<ComboboxSelected>>", lambda e: self.switch_student(self.student_var.get()))
+            self.student_box = ttk.Combobox(top, textvariable=self.student_var, width=20, state="readonly")
+            self.student_box.pack(side="right", padx=6)
+            self.student_box.bind("<<ComboboxSelected>>", lambda e: self.switch_student(self.student_var.get()))
             ttk.Label(top, text="Student:", style="Head.TLabel").pack(side="right")
+            self.course_var = tk.StringVar(value=self.course)
+            self.course_box = ttk.Combobox(top, textvariable=self.course_var, width=18, state="readonly")
+            self.course_box.bind("<<ComboboxSelected>>", lambda e: self.switch_course(self.course_var.get()))
+            if config.roster_courses():
+                self.course_box.pack(side="right", padx=(6, 18))
+                ttk.Label(top, text="Course:", style="Head.TLabel").pack(side="right")
+            self._fill_course_boxes()
         ttk.Label(top, text="Workspace:", style="Head.TLabel").pack(side="left")
         self.ro_label = ttk.Label(top, text="READ ONLY", style="RO.TLabel")
         self.ws_label = ttk.Label(top, text=_short(self.ws.root))
@@ -779,15 +806,46 @@ class MainWindow:
 
     # --- supervisor ----------------------------------------------------------------------------
 
+    def switch_my_course(self, cid: str) -> None:
+        """Student: work in another of my courses."""
+        from ..course import workspace_of
+        ws = Workspace(workspace_of(cid, Path.home()))
+        if not ws.exists():
+            try:
+                ws.init()
+            except OSError as e:
+                messagebox.showerror("FOSSLab", f"Cannot create {ws.root}: {e}", parent=self.root)
+                return
+        tools.xschem_setup(ws)
+        config.save_pref("course", cid)
+        self.home_ws = self.ws = ws
+        self.ws_label.configure(text=_short(ws.root))
+        self.refresh_all()
+        self._info(f"Course {cid}: workspace {_short(ws.root)}")
+
+    def _fill_course_boxes(self) -> None:
+        self.course_box.configure(values=config.roster_courses())
+        self.course_var.set(self.course)
+        self.student_box.configure(values=[MY_WS] + [u for u, _ in config.roster(self.course or None)])
+
+    def switch_course(self, c: str) -> None:
+        """Supervisor: list the students of another course."""
+        self.course = c
+        config.save_pref("supervisor_course", c)
+        self.student_var.set(MY_WS)
+        self.switch_student(MY_WS)
+        self._fill_course_boxes()
+
     def switch_student(self, user: str) -> None:
         if user == MY_WS or not user:
             self.ws, self.student = self.home_ws, ""
         else:
-            home = dict(config.roster()).get(user)
+            home = dict(config.roster(self.course or None)).get(user)
             if home is None:
                 return
-            ws = Workspace(home / config.WS_NAME, readonly=True, owner=user,
-                           run_root=self.home_ws.root / ".fosslab" / "supervisor" / user)
+            sub = f"{self.course}/{user}" if self.course else user
+            ws = Workspace(config.student_workspace(self.course, home), readonly=True, owner=user,
+                           run_root=self.home_ws.root / ".fosslab" / "supervisor" / sub)
             if not ws.lib_file.exists():
                 reason = ("no access (check the ACLs)" if ws.root.exists() and not os.access(ws.root, os.R_OK)
                           else "no workspace yet")
@@ -795,7 +853,8 @@ class MainWindow:
                 self.student_var.set(MY_WS if not self.student else self.student)
                 return
             self.ws, self.student = ws, user
-        self.ws_label.configure(text=_short(self.ws.root) + (f"   (student {self.student})" if self.student else ""))
+        self.ws_label.configure(text=_short(self.ws.root) + (
+            f"   (student {self.student}{', course ' + self.course if self.course else ''})" if self.student else ""))
         if self.ws.readonly:
             self.ro_label.pack(side="left", before=self.ws_label, padx=(4, 0))
         else:
@@ -807,7 +866,7 @@ class MainWindow:
     def open_roster(self) -> None:
         from .supervisor import RosterWindow
 
-        RosterWindow(self.root, self.home_ws, on_open=self.switch_student)
+        RosterWindow(self.root, self.home_ws, on_open=self.switch_student, course=self.course)
 
     def quick_guide(self) -> None:
         messagebox.showinfo("FOSSLab quick guide", QUICK_GUIDE, parent=self.root)

@@ -15,9 +15,14 @@ echo "== xschem and KLayout integration"
 "$RUN" bash "$HERE/gui_integration.sh" "$TMP/demo" || fail=1
 echo "== Library Manager, hierarchy, flows, supervisor (Tk)"
 "$RUN" bash -c "
-D=:\$((80 + RANDOM % 9)); Xvfb \$D -screen 0 1400x900x24 -nolisten tcp >/dev/null 2>&1 & XP=\$!
-sleep 2; DISPLAY=\$D python3 $HERE/test_gui_smoke.py $TMP/demo $TMP/shots; rc=\$?
-kill \$XP; rm -f /tmp/.X\${D#:}-lock /tmp/.X11-unix/X\${D#:}; exit \$rc" || fail=1
+exec 3>$TMP/display1; Xvfb -displayfd 3 -screen 0 1400x900x24 -nolisten tcp >/dev/null 2>&1 & XP=\$!
+sleep 2; DISPLAY=:\$(cat $TMP/display1) python3 $HERE/test_gui_smoke.py $TMP/demo $TMP/shots; rc=\$?
+kill \$XP; exit \$rc" || fail=1
+echo "== courses: supervisor, wizard, students' courses (Tk)"
+"$RUN" bash -c "
+exec 3>$TMP/display2; Xvfb -displayfd 3 -screen 0 1400x900x24 -nolisten tcp >/dev/null 2>&1 & XP=\$!
+sleep 2; DISPLAY=:\$(cat $TMP/display2) python3 $HERE/test_courses_gui.py $TMP/courses $TMP/courses_shots; rc=\$?
+kill \$XP; exit \$rc" || fail=1
 echo "== op-amp example: build, DRC, LVS, corners, Monte Carlo, Verilog-A model"
 "$RUN" bash -c "
 set -e
@@ -30,6 +35,11 @@ python3 -m fosslab -w \$W mc opamp_tut tb_opamp_ac -n 20 > \$W/m.txt && grep -q 
 python3 -m fosslab -w \$W va opamp_tut opamp > \$W/va.txt; grep -q '^VA opamp_tut/opamp: PASS' \$W/va.txt && echo 'PASS Verilog-A compile'
 python3 -m fosslab -w \$W mc opamp_tut tb_opamp_ac --setup model -n 10 > \$W/v.txt && grep -q '^pm ' \$W/v.txt && echo 'PASS model Monte Carlo'
 " || { echo "FAIL op-amp example"; fail=1; }
+
+if command -v podman >/dev/null && [ "${FOSSLAB_SKIP_ROOT_TESTS:-}" != 1 ]; then
+    echo "== courses on the server side (root, in throwaway CentOS 7 / Rocky 9 / Ubuntu containers)"
+    bash "$HERE/test_courses.sh" | grep -v '^PASS' || fail=1
+fi
 
 echo
 [ $fail -eq 0 ] && echo "ALL TESTS PASSED ($TMP)" || echo "SOME TESTS FAILED ($TMP)"

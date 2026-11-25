@@ -25,6 +25,7 @@ fosslab/
     flows.py               netlist, simulate, DRC, LVS, PEX, Verilog-A (OpenVAF)
     views.py               which view of each cell a testbench simulates (schematic,
                            extracted, Verilog-A; the place to add digital views)
+    course.py              courses: teachers, students, settings (one text file each)
     simenv.py              Simulation Environment: design variables, views,
                            outputs with specs, corners, Monte Carlo; saved in
                            <tb>.simenv.json (named setups: <tb>.<name>.simenv.json)
@@ -35,7 +36,8 @@ fosslab/
     integrations/          FOSSLab menu for xschem (Tcl), KLayout cell selection
     selftest.py            every tool and the whole flow on a real IHP inverter
   share/klayout/pymacros/  FOSSLab menu for KLayout
-  install/                 SL7 install (install.sh, add_students.sh, fosslab.conf)
+  install/                 SL7 install (install.sh, fosslab.conf), fosslab-course
+                           (applies courses on the server: plain bash, any Linux)
   wordpress/               the tutorial plugin (build_zip.sh -> upload to WordPress)
   tests/                   run_all.sh: self-test, xschem/KLayout integration, GUI smoke
 ```
@@ -159,19 +161,36 @@ bash install/60_check.sh
 Every line must say `[PASS]`, ending with `ALL PASSED`: every tool, and the
 full IHP flow on an inverter (simulation, DRC, LVS, PEX, post-layout simulation).
 
-### 6. Add the students
+### 6. Create a course and add the students
 
-```bash
-cp install/students.csv.example students.csv
-vi students.csv            # one per line:  user,Full Name[,initial password]
-sudo bash install/add_students.sh students.csv
-```
+Courses are managed from the Supervisor (`fosslab-supervisor`, menu
+*Courses*); each course has its teachers, its students, its own Unix groups
+(`fl-<id>` students, `fl-<id>-t` teachers) and a workspace per student,
+`~/fosslab-<id>`, that only that course's teachers can see.
 
-Missing accounts are created; without a password in the CSV they get a random
-one (listed in `/root/fosslab_passwords.txt`) to be changed at first login.
-Existing accounts are just added to the `fosslab` group. Every student gets
-`~/fosslab`, readable (not writable) by `fosslab-staff`. One more later:
-`sudo bash install/add_students.sh alice`.
+1. *Courses > New course (wizard)...*: id (e.g. `micro-2026`), title,
+   teachers, students (*Import CSV...* or *Paste a list...*: `user,Full Name`
+   per line), teachers' access (read, or read+write), and whether the students
+   get the tutorial's op-amp as a library (none, one shared read-only copy, or
+   a copy of their own). It is saved as a draft in
+   `~/.config/fosslab/courses/<id>.course`.
+2. The *Apply* dialog shows what will change and the command to run, as
+   yourself, in a terminal on the server:
+   ```bash
+   sudo /opt/fosslab/bin/fosslab-course apply ~/.config/fosslab/courses/micro-2026.course
+   ```
+   Missing accounts are created with a random first password (shown to the
+   course's teachers in *Courses > Students*, to be changed at the first
+   login); existing accounts, local or LDAP, are only added. Removing a
+   student keeps their account and work. Safe to repeat.
+3. Restart the Supervisor: the course appears in its *Course* selector.
+
+Load, save, duplicate (next year's edition) and archive courses from the same
+menu; `fosslab-course list | show ID | archive ID` on the server. A course is a
+plain text file, so it can also be written by hand (see `app/fosslab/course.py`).
+The previous single-course setup (`add_students.sh`, group `fosslab`) still
+works; step 50 turns its students into the course `default`, whose students
+keep `~/fosslab`.
 
 ### 7. Use it
 
@@ -179,9 +198,9 @@ Existing accounts are just added to the `fosslab` group. Every student gets
   `fosslab` (or *Development > FOSSLab Library Manager*).
 - You: `fosslab` (your workspace), `fosslab-supervisor` (Student selector +
   Roster), `fosslab example opamp` (the tutorial's reference library).
-- Reference library for the students, read only: each student adds
-  `INCLUDE /home/<you>/fosslab/fosslab.lib` to `~/fosslab/fosslab.lib`
-  (your workspace must be readable by group `fosslab`).
+- A student in several courses switches with *File > Course*.
+- *Courses > Edit system configuration...* edits a copy of `/etc/fosslab.conf`
+  and gives the command that installs it (`sudo fosslab-course system-config`).
 - Look: *Tools > Interface > New / Classical* switches every open window at
   once and is remembered per user (`~/.config/fosslab/gui.json`);
   `FOSSLAB_UI=new|classic` overrides it.
@@ -239,6 +258,11 @@ its zip: `bash tests/server_shots.sh [--live]` from the clone.
   archives; Apptainer 1.3.2 + apptainer-suid, X2Go, XFCE installed; ACLs give
   teachers read-only access), and the Apptainer branch of `fosslab-run` with a
   small stand-in image (user, home, working dir, DISPLAY, binds, inherited ACLs).
+- Courses: `tests/test_courses.sh` applies, changes, re-applies, archives
+  and migrates courses as root (accounts, groups, ACLs, shared and per-student
+  example library, who may apply) in throwaway CentOS 7 (bash 4.2), Rocky
+  Linux 9 and Ubuntu 24.04 containers; `tests/test_courses_gui.py` drives the
+  Supervisor's course windows.
 - Not tested here: the real 15 GB image under Apptainer on SL7's 3.10 kernel
   (step 30) and step 60. Run `install.sh 30 60` on the server; step 60 is
   the self-test above.

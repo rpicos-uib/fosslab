@@ -20,21 +20,40 @@ It goes through six steps (each can be run again on its own, e.g. <code>install.
 New accounts without a password get a random one (in <code>/root/fosslab_passwords.txt</code>), to be changed at the first login.</li>
 </ol>
 
+<h3>Courses</h3>
+<p>Each course has its own teachers, its own students and its own settings, so several courses (or several editions of one) can run on the same server. A student can be in several courses: they work in a separate folder for each, <code>~/fosslab-&lt;course&gt;</code>, and switch with <em>File &gt; Course</em>. Only a course's own teachers see its students' work.</p>
+<p>Everything is in the Supervisor's <strong>Courses</strong> menu:</p>
+<table>
+<tr><th>Menu entry</th><th>What it does</th></tr>
+<tr><td>New course (wizard)...</td><td>Five pages: <em>Course</em> (id, e.g. <code>micro-2026</code>, and title), <em>Teachers</em>, <em>Students</em> (add them one by one, <em>Import CSV...</em> or <em>Paste a list...</em> copied from a spreadsheet: user name and full name per line), <em>Teaching</em> (teachers may read, or read and write, the students' work; the tutorial's op-amp as a library: none, one shared read-only copy, or a copy of their own; the tutorial's address) and <em>Review</em> (what applying it will change).</td></tr>
+<tr><td>Edit course..., Students...</td><td>The same pages, for an existing course. <em>Students</em> also shows the first password of every account the course created.</td></tr>
+<tr><td>Apply changes...</td><td>What will change on the server, and the command that does it (below).</td></tr>
+<tr><td>Duplicate as...</td><td>A new course from an existing one, with or without its students: next year's edition in a minute.</td></tr>
+<tr><td>Load from file..., Save to file...</td><td>Keep, share or reuse a course as a file.</td></tr>
+<tr><td>Archive...</td><td>Hide a finished course from its students' list. Nothing is deleted.</td></tr>
+<tr><td>Edit system configuration...</td><td>Edit a copy of <code>/etc/fosslab.conf</code> (install location, image, folders the tools see...), with the command that installs it.</td></tr>
+</table>
+<p><strong>Applying.</strong> FOSSLab runs without root, so it never changes the server by itself: a course is saved as a draft (<code>~/.config/fosslab/courses/&lt;id&gt;.course</code>) and a teacher of the course with sudo rights applies it, in a terminal on the server:</p>
+<pre><code>$ sudo {{prefix}}/bin/fosslab-course apply ~/.config/fosslab/courses/micro-2026.course</code></pre>
+<p>It creates the groups <code>fl-micro-2026</code> (students) and <code>fl-micro-2026-t</code> (teachers); creates a local account, with a random first password to be changed at the first login, for every student that has none (existing accounts, local or from the university's directory, are only added); creates each student's workspace and gives the course's teachers access to it, and to nothing else; sets up the example library; and stops the access to removed students' work, keeping their accounts and files. It can be run again at any time. <em>Check</em> in the Apply dialog confirms it was done; restart the Supervisor to see the new students. On the server, <code>fosslab-course list</code> shows your courses and <code>fosslab-course show ID</code> one of them.</p>
+<p>A course is a plain text file (<code>id</code>, <code>title</code>, <code>teacher</code>, <code>access</code>, <code>example</code>, <code>student user Full Name</code>... one per line), so it can also be written by hand or generated from another system. The applied ones are in <code>{{prefix}}/courses</code>, readable only by each course's teachers. To move to a new server: install FOSSLab, copy <code>{{prefix}}/courses</code> and <code>{{prefix}}/shared</code>, and apply each course again.</p>
+<p><strong>From the single-course setup.</strong> Installing this version turns the existing students (group <code>fosslab</code>) into the course <code>default</code>, whose students keep <code>~/fosslab</code>, and whose teachers are those of <code>FOSSLAB_TEACHERS</code>.</p>
+
 <h3>Supervising</h3>
-<p>Start <code>fosslab-supervisor</code> (desktop menu: <em>FOSSLab Supervisor</em>). It is the Library Manager plus a <strong>Student</strong> selector and a <strong>Roster</strong>:</p>
+<p>Start <code>fosslab-supervisor</code> (desktop menu: <em>FOSSLab Supervisor</em>). It is the Library Manager plus a <strong>Course</strong> and a <strong>Student</strong> selector and a <strong>Roster</strong>:</p>
 <ul>
-<li>The roster lists every student with their libraries, cells, last change and how many simulations, DRC, LVS and PEX runs pass; private notes per student; export to CSV.</li>
-<li>Choosing a student shows their workspace, <strong>read only</strong>: open any view, browse the hierarchy, look at their DRC/LVS reports. Flows you run on their cells write to your own workspace (<code>~/fosslab/.fosslab/supervisor/&lt;student&gt;</code>), never to theirs.</li>
+<li>The roster lists every student of the course with their libraries, cells, last change and how many simulations, DRC, LVS and PEX runs pass; private notes per student; export to CSV.</li>
+<li>Choosing a student shows their workspace for that course, <strong>read only</strong>: open any view, browse the hierarchy, look at their DRC/LVS reports. Flows you run on their cells write to your own workspace (<code>~/fosslab/.fosslab/supervisor/&lt;course&gt;/&lt;student&gt;</code>), never to theirs.</li>
 <li><em>Copy to my workspace</em> on any of their cells, to try a fix.</li>
 </ul>
-<p>Access works through file ACLs, not passwords: the <code>fosslab-staff</code> group can traverse each student's home and read <code>~/fosslab</code>, and new files inherit that. Nothing else in the students' homes is readable. To let teachers also write (fix a student's file in place), set <code>FOSSLAB_ACL_MODE=rwX</code> in <code>/etc/fosslab.conf</code> and run <code>install.sh 50</code>.</p>
+<p>Access works through file ACLs, not passwords: each course's teachers' group can pass through the students' homes and read (or, if the course says so, also write) their course workspace, and new files inherit that. Nothing else in the students' homes is visible.</p>
 
 <h3>The reference op-amp library</h3>
 <p>Everything in chapters 2 to 11 (numbers and screenshots) comes from a reference library that FOSSLab generates, so you can reproduce it, give it to the students, or change it:</p>
 <pre><code>$ fosslab example opamp                # library opamp_tut in your workspace
 $ fosslab example opamp --solution     # also the exercise's solution (opamp_2pole.va, setup model_2pole)</code></pre>
 <p>It writes the op-amp (schematic, symbol, layout), the testbenches <code>tb_opamp_ac</code> and <code>tb_opamp_tran</code> with their Simulation Environment setups (outputs and specifications, 15 corners, Monte Carlo), the op-amp's Verilog-A view <code>opamp.va</code>, and the setup <code>model</code> of <code>tb_opamp_ac</code> that simulates it instead of the transistors. The model is compiled when a simulation first needs it (or by hand: <code>fosslab va opamp_tut opamp</code>).</p>
-<p><strong>Sharing it read-only with the students.</strong> Generate it without the solution in a workspace of your own (e.g. a <code>course</code> account, or your <code>~/fosslab</code>) and make that workspace readable by the students' group. Each student adds one line to their <code>~/fosslab/fosslab.lib</code> (<em>File &gt; Edit library definitions</em>):</p>
+<p><strong>Giving it to the students</strong> is a course setting (<em>Teaching</em> page: a shared read-only copy, or a copy of their own). By hand, without courses: generate it without the solution in a workspace of your own (e.g. a <code>course</code> account, or your <code>~/fosslab</code>) and make that workspace readable by the students' group. Each student adds one line to their <code>~/fosslab/fosslab.lib</code> (<em>File &gt; Edit library definitions</em>):</p>
 <pre><code>INCLUDE /home/teacher/fosslab/fosslab.lib</code></pre>
 <p>The reference library then appears in their Library Manager, read only; <em>Copy cell...</em> gives them an editable copy of any cell.</p>
 

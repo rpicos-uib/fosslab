@@ -35,8 +35,8 @@ class StudentRow:
     pex: str = ""
 
 
-def scan_student(user: str, home: Path) -> StudentRow:
-    ws = Workspace(home / config.WS_NAME, readonly=True)
+def scan_student(user: str, home: Path, course: str = "") -> StudentRow:
+    ws = Workspace(config.student_workspace(course, home), readonly=True)
     if not ws.root.exists():
         return StudentRow(user, "no workspace")
     if not os.access(ws.root, os.R_OK | os.X_OK):
@@ -68,18 +68,20 @@ class RosterWindow(tk.Toplevel):
             ("last", "Last change", 130), ("sim", "Sim ok", 65), ("drc", "DRC ok", 65),
             ("lvs", "LVS ok", 65), ("pex", "PEX ok", 65), ("note", "Notes", 260))
 
-    def __init__(self, master, my_ws: Workspace, on_open: Callable[[str], None]):
+    def __init__(self, master, my_ws: Workspace, on_open: Callable[[str], None], course: str = ""):
         super().__init__(master)
-        self.my_ws, self.on_open = my_ws, on_open
-        self.notes_dir = my_ws.root / ".fosslab" / "supervisor" / "notes"
+        self.my_ws, self.on_open, self.course = my_ws, on_open, course
+        self.notes_dir = my_ws.root / ".fosslab" / "supervisor" / "notes" / course if course else \
+            my_ws.root / ".fosslab" / "supervisor" / "notes"
         self.rows: list[StudentRow] = []
-        self.title("FOSSLab roster")
+        self.title(f"FOSSLab roster: {course}" if course else "FOSSLab roster")
         self.geometry("1100x520")
         style.apply(self)
 
         bar = ttk.Frame(self, padding=8)
         bar.pack(fill="x")
-        ttk.Label(bar, text=f"Students in group '{config.STUDENT_GROUP}'", style="Head.TLabel").pack(side="left")
+        ttk.Label(bar, text=f"Students of course {course}" if course else
+                  f"Students in group '{config.STUDENT_GROUP}'", style="Head.TLabel").pack(side="left")
         ttk.Button(bar, text="Export CSV...", command=self.export).pack(side="right")
         ttk.Button(bar, text="Refresh", command=self.refresh).pack(side="right", padx=6)
 
@@ -115,17 +117,20 @@ class RosterWindow(tk.Toplevel):
         return self.notes_dir / f"{user}.txt"
 
     def refresh(self) -> None:
-        roster = config.roster()
+        roster = config.roster(self.course or None)
         if not roster:
-            messagebox.showinfo("FOSSLab", f"No students found in group '{config.STUDENT_GROUP}'.\n"
-                                "Start the supervisor with the fosslab-supervisor command.", parent=self)
+            messagebox.showinfo("FOSSLab", (f"Course {self.course} has no students yet (Courses > Students)."
+                                            if self.course else
+                                            f"No students found in group '{config.STUDENT_GROUP}'.\n"
+                                            "Start the supervisor with the fosslab-supervisor command."),
+                                parent=self)
         self.tree.delete(*self.tree.get_children())
         self.tree.insert("", "end", iid="__loading", text="scanning...")
 
         # Tk may only be touched from its own thread: the scan reports
         # through a queue that _poll() reads.
         results: queue.Queue = queue.Queue()
-        threading.Thread(target=lambda: results.put([scan_student(u, h) for u, h in roster]),
+        threading.Thread(target=lambda: results.put([scan_student(u, h, self.course) for u, h in roster]),
                          daemon=True).start()
         self._poll(results)
 
