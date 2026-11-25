@@ -19,7 +19,7 @@ from typing import Callable
 
 from .. import config
 from ..workspace import Workspace, fmt_time
-from . import style
+from . import sorting, style
 
 
 @dataclass
@@ -91,7 +91,7 @@ class RosterWindow(tk.Toplevel):
         self.tree.heading("#0", text="Student")
         self.tree.column("#0", width=120)
         for c, t, w in self.COLS:
-            self.tree.heading(c, text=t, command=lambda c=c: self.sort(c))
+            self.tree.heading(c, text=t)
             self.tree.column(c, width=w, anchor="w" if c in ("note", "state", "last") else "center")
         ys = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=ys.set)
@@ -100,6 +100,7 @@ class RosterWindow(tk.Toplevel):
         self.tree.tag_configure("bad", foreground=style.FAIL)
         self.tree.tag_configure("idle", foreground=style.MUTED)
         self.tree.bind("<Double-1>", lambda e: self.open_selected())
+        self.sorter = sorting.Sorter(self.tree)
 
         nb = ttk.Frame(self, padding=8)
         nb.pack(fill="x")
@@ -156,12 +157,7 @@ class RosterWindow(tk.Toplevel):
             self.tree.insert("", "end", iid=r.user, text=r.user, tags=(tag,) if tag else (),
                              values=(r.state, r.libs or "", r.cells or "", fmt_time(r.last),
                                      r.sim, r.drc, r.lvs, r.pex, note))
-
-    def sort(self, col: str) -> None:
-        items = [(self.tree.set(i, col), i) for i in self.tree.get_children()]
-        items.sort(reverse=col in ("last", "cells", "libs"))
-        for n, (_, i) in enumerate(items):
-            self.tree.move(i, "", n)
+        self.sorter.apply()
 
     def selected(self) -> str | None:
         sel = self.tree.selection()

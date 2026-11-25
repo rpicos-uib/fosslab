@@ -18,7 +18,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Callable
 
 from .. import config, course as cr, tools
-from . import style
+from . import sorting, style
 
 PAGES = ("Course", "Teachers", "Students", "Teaching", "Review")
 
@@ -150,6 +150,7 @@ class CourseWindow(tk.Toplevel):
         self.st.pack(side="left", fill="both", expand=True)
         ys.pack(side="right", fill="y")
         self.st.bind("<Double-1>", lambda e: self.edit_student())
+        self.st_sorter = sorting.Sorter(self.st)
         b = ttk.Frame(f)
         b.pack(fill="x", pady=6)
         for text, cmd in (("Add...", self.add_student), ("Edit...", self.edit_student),
@@ -218,6 +219,7 @@ class CourseWindow(tk.Toplevel):
         for u, n in students:
             status = "in the course" if u in on_server else "added (apply to create)"
             self.st.insert("", "end", iid=u, text=u, values=(n, status, pw.get(u, "")))
+        self.st_sorter.apply()
         self.count.configure(text=f"{len(students)} students")
 
     def _students(self) -> list[tuple[str, str]]:

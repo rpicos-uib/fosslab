@@ -15,7 +15,7 @@ from tkinter import messagebox, simpledialog, ttk
 
 from .. import __version__, config, flows, ipc, templates, tools
 from ..workspace import KIND_BY_NAME, VIEW_KINDS, Library, View, Workspace, fmt_time
-from . import style
+from . import sorting, style
 from .flow_window import FlowWindow
 from .hierarchy_window import HierarchyWindow
 
@@ -188,19 +188,22 @@ class MainWindow:
         self.filter_var.trace_add("write", lambda *a: self.refresh_cells())
         ttk.Entry(head, textvariable=self.filter_var, width=16).pack(side="right")
         ttk.Label(head, text="filter", style="Muted.TLabel").pack(side="right", padx=4)
-        cols = ("sch", "sym", "lay", "sim", "drc", "lvs", "pex")
+        # views: a dot, or how many when there are several (e.g. two Verilog-A
+        # models); then the last result of each flow
+        cols = ("sch", "sym", "lay", "va", "sim", "drc", "lvs", "pex")
         self.cell_tree = ttk.Treeview(cf, columns=cols, selectmode="browse")
         self.cell_tree.heading("#0", text="Cell")
-        self.cell_tree.column("#0", width=200)
-        for c, t in zip(cols, ("Sch", "Sym", "Lay", "Sim", "DRC", "LVS", "PEX")):
+        self.cell_tree.column("#0", width=130, minwidth=90)     # stretches with the pane
+        for c, t in zip(cols, ("Sch", "Sym", "Lay", "VA", "Sim", "DRC", "LVS", "PEX")):
             self.cell_tree.heading(c, text=t)
-            self.cell_tree.column(c, width=style.col_width(self.root, t, 42), anchor="center", stretch=False)
+            self.cell_tree.column(c, width=style.col_width(self.root, t, 40), anchor="center", stretch=False)
+        self.cell_sorter = sorting.Sorter(self.cell_tree)
         self.cell_tree.tag_configure("fail", foreground=style.FAIL)
         self.cell_tree.pack(fill="both", expand=True)
         self.cell_tree.bind("<<TreeviewSelect>>", lambda e: self.refresh_views())
         self.cell_tree.bind("<Double-1>", lambda e: self.open_cell_default())
         self.cell_tree.bind("<Button-3>", self._cell_popup)
-        panes.add(cf, weight=2)
+        panes.add(cf, weight=3)
 
         # Views
         vf = ttk.Frame(panes)
@@ -213,6 +216,7 @@ class MainWindow:
         self.view_tree.column("file", width=170)
         self.view_tree.column("date", width=120, stretch=False)
         self.view_tree.tag_configure("derived", foreground=style.MUTED)
+        self.view_sorter = sorting.Sorter(self.view_tree)
         self.view_tree.pack(fill="both", expand=True)
         self.view_tree.bind("<Double-1>", lambda e: self.open_selected_view())
         self.view_tree.bind("<Button-3>", self._view_popup)
@@ -322,23 +326,33 @@ class MainWindow:
             self.cell_rows[iid] = cell
             if cell == keep:
                 target = iid
+        self.cell_sorter.apply()
         if target:
             self.cell_tree.selection_set(target)
             self.cell_tree.see(target)
         self.refresh_views()
 
     def _cell_row(self, lib: Library, cell: str) -> tuple[str, ...]:
-        kinds = {v.kind for v in self.ws.views(lib, cell)} if not lib.flat else set()
+        n: dict[str, int] = {}
         if lib.flat:
             for k in ("schematic", "symbol"):
                 if self.ws.view_path(lib, cell, k).is_file():
-                    kinds.add(k)
+                    n[k] = 1
             if lib.layout_file:
-                kinds.add("layout")
-        dot = lambda k: "●" if k in kinds else ""  # noqa: E731
+                n["layout"] = 1
+        else:
+            for v in self.ws.views(lib, cell):
+                if not v.derived:
+                    k = "layout" if v.kind == "magic" else v.kind
+                    n[k] = n.get(k, 0) + 1
+
+        def count(k: str) -> str:
+            c = n.get(k, 0)
+            return "" if c == 0 else "●" if c == 1 else str(c)
+
         st = self.ws.status(lib.name, cell) if not lib.flat else None
         mark = lambda f: style.MARK.get(st.get(f), "") if st else ""  # noqa: E731
-        return (dot("schematic"), dot("symbol"), dot("layout"), mark("sim"),
+        return (count("schematic"), count("symbol"), count("layout"), count("veriloga"), mark("sim"),
                 mark("drc"), mark("lvs"), mark("pex"))
 
     def refresh_views(self) -> None:
@@ -359,6 +373,7 @@ class MainWindow:
                                         values=(v.path.name + (f" : {v.cell_in_file}" if v.cell_in_file else ""), date),
                                         tags=("derived",) if v.derived else ())
             self.view_rows[iid] = v
+        self.view_sorter.apply()
         st = self.ws.status(lib.name, cell)
         notes = [f"{f.upper()}: {r.get('summary', '')}" for f, r in st.results.items()]
         self._info(f"{lib.name}/{cell}   " + ("   |   ".join(notes) if notes else
@@ -670,7 +685,8 @@ class MainWindow:
         style.save_mode(m)
         style.apply(self.root, m)
         for c in self.cell_tree["columns"]:
-            self.cell_tree.column(c, width=style.col_width(self.root, self.cell_tree.heading(c, "text"), 42))
+            self.cell_tree.column(c, width=style.col_width(self.root, self.cell_sorter.title(c), 40))
+        self.cell_sorter.widths.clear()
         self._info("New interface." if m == "new" else "Classical interface.")
 
     def open_shots(self) -> None:

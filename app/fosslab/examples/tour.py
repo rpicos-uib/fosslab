@@ -96,8 +96,8 @@ def marks(win) -> list[tuple[int, int, int]]:
     c0 = int(ct.column("#0", "width"))
     cw = [int(ct.column(c, "width")) for c in ct["columns"]]
     out.append((4, x + c0 // 2, by))
-    out.append((5, x + c0 + sum(cw[:3]) // 2, by))
-    out.append((6, x + c0 + sum(cw[:3]) + sum(cw[3:]) // 2, by))
+    out.append((5, x + c0 + sum(cw[:4]) // 2, by))
+    out.append((6, x + c0 + sum(cw[:4]) + sum(cw[4:]) // 2, by))
 
     # 7 views
     x, y, w, h = rel(win.view_tree)

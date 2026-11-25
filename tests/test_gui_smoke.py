@@ -62,7 +62,29 @@ win.reveal("work", "inv")
 pump(root)
 check("reveal selects work/inv", win.current_cell() == "inv")
 row = win.cell_tree.item(win.cell_tree.selection()[0], "values")
-check("cell row shows views and DRC/LVS/PEX pass", list(row) == ["●", "●", "●", "", "✔", "✔", "✔"])
+check("cell row shows views and DRC/LVS/PEX pass", list(row) == ["●", "●", "●", "", "", "✔", "✔", "✔"])
+# two Verilog-A views: the VA column counts them
+d = win.ws.cell_dir("work", "inv")
+for stem in ("inv", "inv_fast"):
+    (d / f"{stem}.va").write_text(f"module {stem}(a, y); inout a, y; electrical a, y; endmodule\n")
+win.refresh_cells()
+pump(root)
+row = win.cell_tree.item(win.cell_tree.selection()[0], "values")
+check("VA column shows 2 Verilog-A views", row[3] == "2")
+# sorting by a heading: ascending, again descending, empty cells last
+names = lambda: [win.cell_tree.item(i, "text") for i in win.cell_tree.get_children()]  # noqa: E731
+win.cell_sorter.click("#0")
+up = names()
+win.cell_sorter.click("#0")
+check("click a heading: sorted ascending, again descending", up == sorted(up, key=str.lower) and names() == up[::-1])
+check("the sorted column shows an arrow", win.cell_tree.heading("#0", "text").endswith("▼"))
+win.cell_sorter.click("va")
+check("sort by VA: the cell with Verilog-A views first, empty last", names()[0] == "inv")
+win.refresh_cells()
+check("the order survives a refresh", names()[0] == "inv")
+for stem in ("inv", "inv_fast"):
+    (d / f"{stem}.va").unlink()
+win.refresh_cells()
 views = [win.view_rows[i].kind for i in win.view_rows]
 check("views include derived netlists", "layout" in views and "pex" in views and "extracted" in views)
 shot(root, "1_main")
